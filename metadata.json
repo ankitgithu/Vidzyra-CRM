@@ -1,0 +1,6 @@
+{
+  "name": "Vidzyra CRM",
+  "description": "Video Editing Agency CRM for Vidzyra – Your Social Media Partner, featuring client & editor portals, four-link workflow, financial pulse, payment slips, and reporting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
