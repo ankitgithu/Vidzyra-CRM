@@ -14,6 +14,7 @@ import {
   RevisionStatus,
   PaymentMethod,
   PaymentType,
+  TimelineEvent,
 } from '../types';
 import {
   initialClients,
@@ -94,6 +95,12 @@ interface CrmContextType {
   requestRevision: (workId: string, notes: string, requestedBy: string) => void;
   updateRevisionStatus: (workId: string, status: RevisionStatus, notes?: string) => void;
 
+  // Review & Portal Completion Actions
+  submitEditorCompletion: (workId: string, editorId: string, editorName?: string) => boolean;
+  approveWork: (workId: string, clientName?: string) => boolean;
+  submitClientRevision: (params: { workId: string; notes: string; timecode?: string; clientName?: string }) => boolean;
+  updateProjectReview: (workId: string, reviewStatus: string, notes?: string, clientName?: string) => void;
+
   // Payments
   addClientPayment: (paymentData: Omit<ClientPayment, 'id' | 'receiptNumber' | 'createdAt'>) => ClientPayment;
   updateClientPayment: (id: string, updates: Partial<ClientPayment>) => ClientPayment | null;
@@ -108,9 +115,9 @@ interface CrmContextType {
 
   // Notifications & Activities
   markNotificationAsRead: (id: string) => void;
-  markAllNotificationsAsRead: () => void;
+  markAllNotificationsAsRead: (filter?: { role?: 'admin' | 'client' | 'editor'; id?: string }) => void;
   deleteNotification: (id: string) => void;
-  clearAllNotifications: () => void;
+  clearAllNotifications: (filter?: { role?: 'admin' | 'client' | 'editor'; id?: string }) => void;
   addActivity: (activity: Omit<Activity, 'id' | 'timestamp' | 'when'>) => void;
 
   // Settings
@@ -1228,6 +1235,249 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  // EDITOR COMPLETION SUBMISSION WORKFLOW
+  const submitEditorCompletion = (
+    workId: string,
+    editorId: string,
+    editorName?: string
+  ): boolean => {
+    const project = projects.find((p) => p.id === workId);
+    if (!project) return false;
+
+    const editorObj = editors.find((e) => e.id === editorId);
+    const resolvedEditorName = editorName || editorObj?.name || 'Assigned Editor';
+    const { date, time, formatted } = getFormattedDateTime();
+
+    const newTimelineItem: TimelineEvent = {
+      id: 'tm-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      person: resolvedEditorName,
+      action: 'Work marked as complete & submitted for client review',
+      date,
+      time,
+      status: 'Completed',
+    };
+
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== workId) return p;
+        return {
+          ...p,
+          status: 'Completed',
+          editorUploadConfirmed: true,
+          editorUploadConfirmedAt: p.editorUploadConfirmedAt || formatted,
+          reviewStatus: 'Awaiting Client Review',
+          timeline: [...p.timeline, newTimelineItem],
+        };
+      })
+    );
+
+    addActivity({
+      who: resolvedEditorName,
+      action: 'Work completed',
+      what: `${resolvedEditorName} marked "${project.name}" as complete`,
+      entityType: 'work',
+      entityId: workId,
+      clientId: project.clientId,
+      editorId: project.assignedTo || editorId,
+    });
+
+    // 1. Notification to Admin
+    addNotification({
+      type: 'work',
+      message: `${resolvedEditorName} marked ${project.name} as complete.`,
+      relatedWorkId: workId,
+      relatedClientId: project.clientId,
+      relatedEditorId: project.assignedTo || editorId,
+      targetRole: 'admin',
+    });
+
+    // 2. Notification to Client associated with that Work/Project
+    addNotification({
+      type: 'work',
+      message: `${resolvedEditorName} marked ${project.name} as complete.`,
+      relatedWorkId: workId,
+      relatedClientId: project.clientId,
+      relatedEditorId: project.assignedTo || editorId,
+      targetRole: 'client',
+    });
+
+    return true;
+  };
+
+  // CLIENT APPROVAL WORKFLOW
+  const approveWork = (workId: string, clientName?: string): boolean => {
+    const project = projects.find((p) => p.id === workId);
+    if (!project) return false;
+
+    // Prevent duplicate approval
+    if (project.status === 'Approved' || project.reviewStatus === 'Approved') {
+      return true;
+    }
+
+    const clientObj = clients.find((c) => c.id === project.clientId);
+    const resolvedClientName = clientName || clientObj?.name || 'Client';
+    const { date, time, formatted } = getFormattedDateTime();
+
+    const newTimelineItem: TimelineEvent = {
+      id: 'tm-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      person: resolvedClientName,
+      action: 'Deliverable approved by client',
+      date,
+      time,
+      status: 'Approved',
+    };
+
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== workId) return p;
+        return {
+          ...p,
+          status: 'Approved',
+          reviewStatus: 'Approved',
+          reviewNotes: 'Deliverable approved by client.',
+          approvedAt: formatted,
+          approvedBy: resolvedClientName,
+          timeline: [...p.timeline, newTimelineItem],
+        };
+      })
+    );
+
+    addActivity({
+      who: resolvedClientName,
+      action: 'Work approved',
+      what: `${resolvedClientName} approved "${project.name}"`,
+      entityType: 'work',
+      entityId: workId,
+      clientId: project.clientId,
+      editorId: project.assignedTo || undefined,
+    });
+
+    // 1. Notification to Admin
+    addNotification({
+      type: 'work',
+      message: `${resolvedClientName} approved ${project.name}.`,
+      relatedWorkId: workId,
+      relatedClientId: project.clientId,
+      relatedEditorId: project.assignedTo || undefined,
+      targetRole: 'admin',
+    });
+
+    // 2. Notification to Assigned Editor if exists
+    if (project.assignedTo) {
+      addNotification({
+        type: 'work',
+        message: `${resolvedClientName} approved ${project.name}.`,
+        relatedWorkId: workId,
+        relatedClientId: project.clientId,
+        relatedEditorId: project.assignedTo,
+        targetRole: 'editor',
+      });
+    }
+
+    return true;
+  };
+
+  // CLIENT REVISION REQUEST WORKFLOW
+  const submitClientRevision = (params: {
+    workId: string;
+    notes: string;
+    timecode?: string;
+    clientName?: string;
+  }): boolean => {
+    const { workId, notes, timecode, clientName } = params;
+    const project = projects.find((p) => p.id === workId);
+    if (!project) return false;
+
+    const clientObj = clients.find((c) => c.id === project.clientId);
+    const resolvedClientName = clientName || clientObj?.name || 'Client';
+    const { date, time, formatted } = getFormattedDateTime();
+
+    const formattedRevisionNotes =
+      timecode && timecode.trim() ? `[${timecode.trim()}] ${notes.trim()}` : notes.trim();
+
+    const newTimelineItem: TimelineEvent = {
+      id: 'tm-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      person: resolvedClientName,
+      action: `Revision requested${timecode ? ` at ${timecode}` : ''}: "${notes.trim()}"`,
+      date,
+      time,
+      status: 'Revision Required',
+    };
+
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id !== workId) return p;
+        return {
+          ...p,
+          status: 'Revision Required',
+          revisionCount: (p.revisionCount || 0) + 1,
+          revisionStatus: 'Revision Requested',
+          revisionRequestedDate: formatted,
+          revisionNotes: formattedRevisionNotes,
+          revisionTimecode: timecode?.trim() || undefined,
+          reviewStatus: 'Revision Required',
+          reviewNotes: formattedRevisionNotes,
+          editorUploadConfirmed: false,
+          timeline: [...p.timeline, newTimelineItem],
+        };
+      })
+    );
+
+    addActivity({
+      who: resolvedClientName,
+      action: 'Revision requested',
+      what: `${resolvedClientName} requested a revision for "${project.name}"`,
+      entityType: 'revision',
+      entityId: workId,
+      clientId: project.clientId,
+      editorId: project.assignedTo || undefined,
+    });
+
+    // 1. Notification to Admin
+    addNotification({
+      type: 'revision',
+      message: `${resolvedClientName} requested a revision for ${project.name}.`,
+      relatedWorkId: workId,
+      relatedClientId: project.clientId,
+      relatedEditorId: project.assignedTo || undefined,
+      targetRole: 'admin',
+    });
+
+    // 2. Notification to assigned Editor if exists
+    if (project.assignedTo) {
+      addNotification({
+        type: 'revision',
+        message: `${resolvedClientName} requested a revision for ${project.name}.`,
+        relatedWorkId: workId,
+        relatedClientId: project.clientId,
+        relatedEditorId: project.assignedTo,
+        targetRole: 'editor',
+      });
+    }
+
+    return true;
+  };
+
+  // Generic review update bridge
+  const updateProjectReview = (
+    workId: string,
+    reviewStatus: string,
+    notes?: string,
+    clientName?: string
+  ) => {
+    if (reviewStatus === 'Approved') {
+      approveWork(workId, clientName);
+    } else if (reviewStatus === 'Revision Requested' || reviewStatus === 'Revision Required') {
+      submitClientRevision({
+        workId,
+        notes: notes || 'Revision requested by client',
+        clientName,
+      });
+    } else {
+      updateWorkStatus(workId, reviewStatus as WorkStatus, clientName || 'Client');
+    }
+  };
+
   // CLIENT PAYMENTS
   const addClientPayment = (
     paymentData: Omit<ClientPayment, 'id' | 'receiptNumber' | 'createdAt'>
@@ -1457,16 +1707,37 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const markAllNotificationsAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  const markAllNotificationsAsRead = (filter?: { role?: 'admin' | 'client' | 'editor'; id?: string }) => {
+    setNotifications((prev) =>
+      prev.map((n) => {
+        if (!filter || !filter.role || filter.role === 'admin') {
+          return { ...n, read: true };
+        }
+        if (filter.role === 'editor' && n.relatedEditorId === filter.id) {
+          return { ...n, read: true };
+        }
+        if (filter.role === 'client' && n.relatedClientId === filter.id) {
+          return { ...n, read: true };
+        }
+        return n;
+      })
+    );
   };
 
   const deleteNotification = (id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
-  const clearAllNotifications = () => {
-    setNotifications([]);
+  const clearAllNotifications = (filter?: { role?: 'admin' | 'client' | 'editor'; id?: string }) => {
+    if (!filter || !filter.role || filter.role === 'admin') {
+      setNotifications([]);
+    } else if (filter.role === 'editor' && filter.id) {
+      setNotifications((prev) => prev.filter((n) => n.relatedEditorId !== filter.id));
+    } else if (filter.role === 'client' && filter.id) {
+      setNotifications((prev) => prev.filter((n) => n.relatedClientId !== filter.id));
+    } else {
+      setNotifications([]);
+    }
   };
 
   // SETTINGS
@@ -1651,6 +1922,10 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         resetConfirmation,
         requestRevision,
         updateRevisionStatus,
+        submitEditorCompletion,
+        approveWork,
+        submitClientRevision,
+        updateProjectReview,
         addClientPayment,
         updateClientPayment,
         deleteClientPayment,

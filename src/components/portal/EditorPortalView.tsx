@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ExternalLink,
   MessageSquare,
   CheckCircle,
+  CheckCircle2,
+  AlertTriangle,
   FileCheck,
   Download,
   LogOut,
@@ -12,11 +14,14 @@ import {
   Briefcase,
   AlertCircle,
   Clock,
+  Bell,
+  X,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
 import { ProjectStatus } from '../../types';
 import { ReceiptData } from '../../utils/receiptGenerator';
 import { PaymentReceiptModal } from '../payments/PaymentReceiptModal';
+import { NotificationDrawer } from '../notifications/NotificationDrawer';
 
 interface EditorPortalViewProps {
   editorId: string;
@@ -29,10 +34,29 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
   onExit,
   isSharedPortal = false,
 }) => {
-  const { editors, projects, editorPayments, getEditorStats, updateProject, settings } = useCrm();
+  const {
+    editors,
+    projects,
+    editorPayments,
+    getEditorStats,
+    updateProject,
+    submitEditorCompletion,
+    notifications,
+    settings,
+  } = useCrm();
 
   const editor = editors.find((e) => e.id === editorId);
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptData | null>(null);
+  const [selectedStatus, setSelectedStatus] = useState<Record<string, ProjectStatus>>({});
+  const [submittingWorkId, setSubmittingWorkId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const editorNotifications = useMemo(
+    () => notifications.filter((n) => n.relatedEditorId === editorId && n.targetRole !== 'client'),
+    [notifications, editorId]
+  );
+  const unreadEditorNotifs = editorNotifications.filter((n) => !n.read).length;
 
   if (!editor) {
     return (
@@ -87,8 +111,28 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
   const assignedProjects = projects.filter((p) => p.assignedTo === editor.id && p.workDoneBy === 'Assigned');
   const payments = editorPayments.filter((p) => p.editorId === editor.id);
 
-  const handleStatusChange = (projectId: string, newStatus: ProjectStatus) => {
-    updateProject(projectId, { status: newStatus });
+  const handleDropdownChange = (projectId: string, newStatus: ProjectStatus) => {
+    setSelectedStatus((prev) => ({ ...prev, [projectId]: newStatus }));
+    if (newStatus !== 'Completed') {
+      updateProject(projectId, { status: newStatus });
+    }
+  };
+
+  const handleSubmitCompletion = (projectId: string) => {
+    if (submittingWorkId) return;
+    setSubmittingWorkId(projectId);
+    try {
+      submitEditorCompletion(projectId, editor.id, editor.name);
+      setToastMessage('Work completion submitted successfully! Client and Admin have been notified.');
+      setTimeout(() => setToastMessage(null), 4500);
+      setSelectedStatus((prev) => {
+        const next = { ...prev };
+        delete next[projectId];
+        return next;
+      });
+    } finally {
+      setSubmittingWorkId(null);
+    }
   };
 
   const handleOpenReceipt = (pay: typeof payments[0]) => {
@@ -119,6 +163,20 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-4 right-4 z-50 bg-purple-700 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+          <CheckCircle className="w-4 h-4 text-white flex-shrink-0" />
+          <span>{toastMessage}</span>
+          <button
+            onClick={() => setToastMessage(null)}
+            className="ml-2 text-white/80 hover:text-white"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Top Banner - Only rendered in Admin Preview mode */}
       {!isSharedPortal && onExit && (
         <div className="bg-purple-950 text-purple-200 px-4 py-2 text-xs flex items-center justify-between border-b border-purple-800">
@@ -151,15 +209,33 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
             </div>
           </div>
 
-          <a
-            href={whatsappUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs transition"
-          >
-            <MessageSquare className="w-4 h-4" />
-            WhatsApp Producer
-          </a>
+          <div className="flex items-center space-x-3">
+            {/* Notification Bell */}
+            <button
+              id="btn-editor-notifications"
+              onClick={() => setShowNotifications(true)}
+              className="relative p-2.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition border border-slate-200 bg-white cursor-pointer"
+              title="View notifications"
+              aria-label="View notifications"
+            >
+              <Bell className="w-4 h-4 text-slate-700" />
+              {unreadEditorNotifs > 0 && (
+                <span className="absolute -top-1 -right-1 bg-purple-600 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full ring-2 ring-white">
+                  {unreadEditorNotifs}
+                </span>
+              )}
+            </button>
+
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs transition"
+            >
+              <MessageSquare className="w-4 h-4" />
+              WhatsApp Producer
+            </a>
+          </div>
         </div>
       </header>
 
@@ -282,17 +358,104 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
                       <span className="text-[11px] text-slate-400 italic px-2">Upload link pending</span>
                     )}
 
-                    {/* Status Dropdown */}
-                    <select
-                      value={p.status}
-                      onChange={(e) => handleStatusChange(p.id, e.target.value as ProjectStatus)}
-                      className="text-xs font-semibold px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800"
-                    >
-                      <option value="Pending">Pending</option>
-                      <option value="In Progress">In Progress</option>
-                      <option value="Completed">Mark as Completed</option>
-                    </select>
+                    {/* Status Workflow for Editor */}
+                    {p.status === 'Approved' || p.reviewStatus === 'Approved' ? (
+                      <span
+                        id={`editor-approved-badge-${p.id}`}
+                        className="px-3 py-1.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1.5 select-none shadow-2xs"
+                      >
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                        Approved by Client
+                      </span>
+                    ) : p.status === 'Completed' ? (
+                      <div className="flex items-center gap-2">
+                        <span
+                          id={`editor-completed-badge-${p.id}`}
+                          className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          Completed (Awaiting Client Review)
+                        </span>
+                        {/* Option to re-open if needed */}
+                        <select
+                          value="Completed"
+                          onChange={(e) => {
+                            const val = e.target.value as ProjectStatus;
+                            if (val !== 'Completed') {
+                              handleDropdownChange(p.id, val);
+                            }
+                          }}
+                          className="text-[11px] font-medium px-2 py-1 bg-white border border-slate-200 rounded-lg text-slate-500 cursor-pointer"
+                          title="Change status if further edits required"
+                        >
+                          <option value="Completed">Completed</option>
+                          <option value="In Progress">Reopen (In Progress)</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <select
+                          id={`select-status-${p.id}`}
+                          value={selectedStatus[p.id] || p.status}
+                          onChange={(e) => handleDropdownChange(p.id, e.target.value as ProjectStatus)}
+                          className="text-xs font-semibold px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800 cursor-pointer focus:ring-2 focus:ring-purple-500/20"
+                        >
+                          <option value="Pending">Pending</option>
+                          <option value="In Progress">In Progress</option>
+                          {p.status === 'Revision Required' && (
+                            <option value="Revision Required">Revision in Progress</option>
+                          )}
+                          <option value="Completed">Mark as Complete</option>
+                        </select>
+
+                        {/* Submit button appears when "Mark as Complete" is selected */}
+                        {(selectedStatus[p.id] === 'Completed' || (p.status === 'Completed' && false)) && (
+                          <button
+                            id={`btn-submit-editor-${p.id}`}
+                            type="button"
+                            disabled={submittingWorkId === p.id}
+                            onClick={() => handleSubmitCompletion(p.id)}
+                            className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer disabled:cursor-not-allowed animate-in fade-in"
+                          >
+                            {submittingWorkId === p.id ? (
+                              <>
+                                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                Submitting...
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle className="w-3.5 h-3.5" />
+                                Submit
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
+
+                  {/* Revision Alert Box if revision requested */}
+                  {p.status === 'Revision Required' && (
+                    <div className="mt-3 p-3 bg-amber-50/90 border border-amber-200 rounded-xl text-xs space-y-1.5">
+                      <div className="flex items-center justify-between font-semibold text-amber-900">
+                        <span className="flex items-center gap-1.5">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                          Client Requested Revision
+                        </span>
+                        {p.revisionTimecode && (
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-mono text-[11px]">
+                            Timecode: {p.revisionTimecode}
+                          </span>
+                        )}
+                      </div>
+                      {p.revisionNotes && (
+                        <p className="text-slate-700 whitespace-pre-line pl-5">{p.revisionNotes}</p>
+                      )}
+                      <p className="text-[11px] text-amber-700 italic pl-5">
+                        Please upload your new render to the "Upload Final Render" link above, select "Mark as Complete" from the dropdown, and click <strong>Submit</strong>.
+                      </p>
+                    </div>
+                  )}
                 </div>
               ))
             )}
@@ -333,6 +496,14 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
           </div>
         </div>
       </main>
+
+      {/* Notification Drawer for Editor */}
+      <NotificationDrawer
+        isOpen={showNotifications}
+        onClose={() => setShowNotifications(false)}
+        filterRole="editor"
+        currentEntityId={editor.id}
+      />
 
       {/* Receipt Modal */}
       <PaymentReceiptModal

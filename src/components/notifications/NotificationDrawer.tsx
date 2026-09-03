@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   X,
   Bell,
@@ -21,6 +21,8 @@ interface NotificationDrawerProps {
   onOpenWork?: (workId: string) => void;
   onOpenClient?: (clientId: string) => void;
   onOpenEditor?: (editorId: string) => void;
+  filterRole?: 'admin' | 'editor' | 'client';
+  currentEntityId?: string;
 }
 
 export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
@@ -29,6 +31,8 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   onOpenWork,
   onOpenClient,
   onOpenEditor,
+  filterRole = 'admin',
+  currentEntityId,
 }) => {
   const {
     notifications,
@@ -52,9 +56,26 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
     }, 2800);
   };
 
+  const displayedNotifications = useMemo(() => {
+    if (filterRole === 'editor' && currentEntityId) {
+      return notifications.filter(
+        (n) => n.relatedEditorId === currentEntityId && n.targetRole !== 'client'
+      );
+    }
+    if (filterRole === 'client' && currentEntityId) {
+      return notifications.filter(
+        (n) => n.relatedClientId === currentEntityId && n.targetRole !== 'editor'
+      );
+    }
+    // Admin mode
+    return notifications.filter(
+      (n) => (n.targetRole !== 'client' && n.targetRole !== 'editor') || n.targetRole === 'admin' || !n.targetRole
+    );
+  }, [notifications, filterRole, currentEntityId]);
+
   if (!isOpen) return null;
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const unreadCount = displayedNotifications.filter((n) => !n.read).length;
 
   const getIcon = (type: NotificationType) => {
     switch (type) {
@@ -78,6 +99,11 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   const handleNotificationClick = (n: typeof notifications[0]) => {
     markNotificationAsRead(n.id);
 
+    if (filterRole === 'editor' || filterRole === 'client') {
+      onClose();
+      return;
+    }
+
     if (n.relatedWorkId) {
       setSelectedWorkId(n.relatedWorkId);
       setActiveTab('work');
@@ -100,9 +126,9 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   };
 
   const handleConfirmClearAll = () => {
-    clearAllNotifications();
+    clearAllNotifications({ role: filterRole, id: currentEntityId });
     setShowClearModal(false);
-    showToast('All notifications cleared.');
+    showToast('Notifications cleared.');
   };
 
   return (
@@ -136,7 +162,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
             )}
           </div>
           <div className="flex items-center space-x-2">
-            {notifications.length > 0 && (
+            {displayedNotifications.length > 0 && (
               <button
                 id="btn-clear-all-notifications"
                 onClick={() => setShowClearModal(true)}
@@ -150,7 +176,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
             {unreadCount > 0 && (
               <button
                 id="notif-mark-all-read"
-                onClick={markAllNotificationsAsRead}
+                onClick={() => markAllNotificationsAsRead({ role: filterRole, id: currentEntityId })}
                 className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 px-2 py-1 rounded hover:bg-indigo-50 transition"
               >
                 <CheckCheck className="w-3.5 h-3.5" />
@@ -169,7 +195,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
 
         {/* Notifications list */}
         <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-          {notifications.length === 0 ? (
+          {displayedNotifications.length === 0 ? (
             <div className="p-8 text-center text-slate-500">
               <Bell className="w-10 h-10 mx-auto text-slate-300 mb-2" />
               <p className="text-sm font-medium">No notifications</p>
@@ -178,7 +204,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
               </p>
             </div>
           ) : (
-            notifications.map((n) => (
+            displayedNotifications.map((n) => (
               <div
                 key={n.id}
                 onClick={() => handleNotificationClick(n)}

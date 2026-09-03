@@ -24,7 +24,8 @@ export type WorkStatus =
   | 'Completed'
   | 'Delivered'
   | 'Cancelled'
-  | 'Revision Required';
+  | 'Revision Required'
+  | 'Approved';
 
 export type ProjectStatus = WorkStatus;
 
@@ -123,8 +124,15 @@ export interface WorkProject {
   revisionStatus: RevisionStatus;
   revisionRequestedDate?: string;
   revisionNotes?: string;
+  revisionTimecode?: string;
   revisionUploadedDate?: string;
   revisionCompletedDate?: string;
+
+  // Review & Approval Workflow
+  reviewStatus?: string;
+  reviewNotes?: string;
+  approvedAt?: string;
+  approvedBy?: string;
 
   // Timeline
   timeline: TimelineEvent[];
@@ -240,6 +248,7 @@ export interface NotificationItem {
   relatedEditorId?: string;
   relatedWorkId?: string;
   relatedPaymentId?: string;
+  targetRole?: 'admin' | 'client' | 'editor' | 'all';
   date: string;
   time: string;
   timestamp: number;

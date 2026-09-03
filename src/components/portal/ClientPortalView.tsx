@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ExternalLink,
   MessageSquare,
@@ -12,11 +12,14 @@ import {
   CreditCard,
   Briefcase,
   AlertCircle,
+  Bell,
+  X,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
 import { ProjectStatus } from '../../types';
 import { ReceiptData } from '../../utils/receiptGenerator';
 import { PaymentReceiptModal } from '../payments/PaymentReceiptModal';
+import { NotificationDrawer } from '../notifications/NotificationDrawer';
 
 interface ClientPortalViewProps {
   clientId: string;
@@ -29,13 +32,33 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   onExit,
   isSharedPortal = false,
 }) => {
-  const { clients, projects, clientPayments, getClientStats, updateProjectReview, settings } = useCrm();
+  const {
+    clients,
+    projects,
+    clientPayments,
+    getClientStats,
+    approveWork,
+    submitClientRevision,
+    notifications,
+    settings,
+  } = useCrm();
 
   const client = clients.find((c) => c.id === clientId);
 
   const [revisionWorkId, setRevisionWorkId] = useState<string | null>(null);
   const [revisionNotes, setRevisionNotes] = useState('');
+  const [revisionTimecode, setRevisionTimecode] = useState('');
+  const [isSubmittingRevision, setIsSubmittingRevision] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptData | null>(null);
+
+  const clientNotifications = useMemo(
+    () => notifications.filter((n) => n.relatedClientId === clientId && n.targetRole !== 'editor'),
+    [notifications, clientId]
+  );
+  const unreadClientNotifs = clientNotifications.filter((n) => !n.read).length;
 
   if (!client) {
     return (
@@ -91,19 +114,42 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   const payments = clientPayments.filter((p) => p.clientId === client.id);
 
   const handleApprove = (workId: string) => {
-    updateProjectReview(workId, 'Approved', 'Deliverable approved by client.');
+    if (approvingId) return;
+    setApprovingId(workId);
+    try {
+      approveWork(workId, client.name);
+      setToastMessage('Deliverable approved successfully. Admin and assigned Editor have been notified.');
+      setTimeout(() => setToastMessage(null), 4500);
+    } finally {
+      setApprovingId(null);
+    }
   };
 
   const handleOpenRevisionModal = (workId: string) => {
+    const proj = projects.find((p) => p.id === workId);
     setRevisionWorkId(workId);
-    setRevisionNotes('');
+    setRevisionNotes(proj?.revisionNotes || '');
+    setRevisionTimecode(proj?.revisionTimecode || '');
   };
 
   const handleSubmitRevision = () => {
-    if (!revisionWorkId || !revisionNotes.trim()) return;
-    updateProjectReview(revisionWorkId, 'Revision Requested', revisionNotes.trim());
-    setRevisionWorkId(null);
-    setRevisionNotes('');
+    if (!revisionWorkId || !revisionNotes.trim() || isSubmittingRevision) return;
+    setIsSubmittingRevision(true);
+    try {
+      submitClientRevision({
+        workId: revisionWorkId,
+        notes: revisionNotes.trim(),
+        timecode: revisionTimecode.trim() || undefined,
+        clientName: client.name,
+      });
+      setToastMessage('Revision request submitted successfully.');
+      setTimeout(() => setToastMessage(null), 4500);
+      setRevisionWorkId(null);
+      setRevisionNotes('');
+      setRevisionTimecode('');
+    } finally {
+      setIsSubmittingRevision(false);
+    }
   };
 
   const handleOpenReceipt = (pay: typeof payments[0]) => {
@@ -134,6 +180,20 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-4 right-4 z-50 bg-emerald-600 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+          <CheckCircle className="w-4 h-4 text-white flex-shrink-0" />
+          <span>{toastMessage}</span>
+          <button
+            onClick={() => setToastMessage(null)}
+            className="ml-2 text-white/80 hover:text-white"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Top Banner (Admin simulator notice) - Only rendered in Admin Preview mode */}
       {!isSharedPortal && onExit && (
         <div className="bg-indigo-950 text-indigo-200 px-4 py-2 text-xs flex items-center justify-between border-b border-indigo-800">
@@ -166,15 +226,33 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
             </div>
           </div>
 
-          <a
-            href={whatsappUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs transition"
-          >
-            <MessageSquare className="w-4 h-4" />
-            WhatsApp Vidzyra
-          </a>
+          <div className="flex items-center space-x-3">
+            {/* Notification Bell */}
+            <button
+              id="btn-client-notifications"
+              onClick={() => setShowNotifications(true)}
+              className="relative p-2.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition border border-slate-200 bg-white cursor-pointer"
+              title="View notifications"
+              aria-label="View notifications"
+            >
+              <Bell className="w-4 h-4 text-slate-700" />
+              {unreadClientNotifs > 0 && (
+                <span className="absolute -top-1 -right-1 bg-indigo-600 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full ring-2 ring-white">
+                  {unreadClientNotifs}
+                </span>
+              )}
+            </button>
+
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs transition"
+            >
+              <MessageSquare className="w-4 h-4" />
+              WhatsApp Vidzyra
+            </a>
+          </div>
         </div>
       </header>
 
@@ -313,25 +391,86 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     )}
 
                     {/* Review Controls */}
-                    {p.status === 'Completed' || p.status === 'Delivered' || p.reviewStatus ? (
-                      <div className="flex items-center space-x-1 pl-2 border-l border-slate-200">
+                    {p.status === 'Approved' || p.reviewStatus === 'Approved' ? (
+                      <span
+                        id={`approved-badge-${p.id}`}
+                        className="px-3 py-1.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1.5 select-none shadow-2xs"
+                      >
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                        Approved
+                      </span>
+                    ) : p.status === 'Revision Required' || p.reviewStatus === 'Revision Required' ? (
+                      <div className="flex items-center space-x-1.5 pl-2 border-l border-slate-200">
+                        <span className="px-2.5 py-1.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg text-xs font-semibold flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                          Revision Requested
+                        </span>
                         <button
-                          onClick={() => handleApprove(p.id)}
-                          className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-semibold transition flex items-center gap-1"
+                          id={`btn-edit-revision-${p.id}`}
+                          onClick={() => handleOpenRevisionModal(p.id)}
+                          className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                          title="Update revision notes"
                         >
-                          <CheckCircle className="w-3 h-3" />
-                          Approve
+                          Update Notes
+                        </button>
+                      </div>
+                    ) : p.status === 'Completed' || p.status === 'Delivered' ? (
+                      <div className="flex items-center space-x-1.5 pl-2 border-l border-slate-200">
+                        <button
+                          id={`btn-approve-${p.id}`}
+                          disabled={approvingId === p.id}
+                          onClick={() => handleApprove(p.id)}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:cursor-not-allowed"
+                        >
+                          {approvingId === p.id ? (
+                            <>
+                              <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                              Approving...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              Approve
+                            </>
+                          )}
                         </button>
                         <button
+                          id={`btn-revision-${p.id}`}
                           onClick={() => handleOpenRevisionModal(p.id)}
-                          className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-xs font-semibold transition flex items-center gap-1"
+                          className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
                         >
-                          <AlertTriangle className="w-3 h-3" />
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
                           Request Revision
                         </button>
                       </div>
                     ) : null}
                   </div>
+
+                  {/* Revision Notes Details if active */}
+                  {p.status === 'Revision Required' && p.revisionNotes && (
+                    <div className="mt-3 p-3 bg-amber-50/70 border border-amber-200 rounded-xl text-xs space-y-1">
+                      <div className="flex items-center justify-between font-semibold text-amber-900">
+                        <span className="flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                          Your Revision Notes Submitted to Editor
+                        </span>
+                        {p.revisionTimecode && (
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-mono text-[11px]">
+                            Timecode: {p.revisionTimecode}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-slate-700 whitespace-pre-line">{p.revisionNotes}</p>
+                    </div>
+                  )}
+
+                  {/* Approved Timestamp if approved */}
+                  {(p.status === 'Approved' || p.reviewStatus === 'Approved') && p.approvedAt && (
+                    <div className="mt-2 text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                      Approved on {p.approvedAt} {p.approvedBy ? `by ${p.approvedBy}` : ''}
+                    </div>
+                  )}
                 </div>
               ))
             )}
@@ -375,37 +514,115 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
 
       {/* Revision Modal */}
       {revisionWorkId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
-            <h3 className="font-bold text-slate-900 text-sm">Request Deliverable Revision</h3>
-            <p className="text-xs text-slate-500">
-              Please provide precise timestamps and notes for the changes required (e.g. 0:14 lower music, 1:20 fix caption typo).
-            </p>
-            <textarea
-              rows={4}
-              required
-              value={revisionNotes}
-              onChange={(e) => setRevisionNotes(e.target.value)}
-              placeholder="Timestamps, text corrections, sound edits..."
-              className="w-full text-xs p-3 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500/20"
-            />
-            <div className="flex justify-end space-x-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center space-x-2">
+                <div className="p-2 bg-amber-50 rounded-xl border border-amber-200 text-amber-600">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Request Deliverable Revision</h3>
+                  <p className="text-[11px] text-slate-500">
+                    Project: <strong>{projects.find((p) => p.id === revisionWorkId)?.name}</strong>
+                  </p>
+                </div>
+              </div>
               <button
-                onClick={() => setRevisionWorkId(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800"
+                onClick={() => {
+                  if (!isSubmittingRevision) {
+                    setRevisionWorkId(null);
+                    setRevisionNotes('');
+                    setRevisionTimecode('');
+                  }
+                }}
+                disabled={isSubmittingRevision}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Timecode / Timestamp <span className="text-slate-400 font-normal">(Optional)</span>
+                </label>
+                <input
+                  id="input-revision-timecode"
+                  type="text"
+                  value={revisionTimecode}
+                  onChange={(e) => setRevisionTimecode(e.target.value)}
+                  placeholder="e.g. 00:12, 00:35 - 00:48"
+                  disabled={isSubmittingRevision}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Examples: <code className="text-slate-600 font-mono">00:12</code>, <code className="text-slate-600 font-mono">00:35 – 00:48</code>
+                </p>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Revision Details & Notes <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  id="input-revision-notes"
+                  rows={4}
+                  required
+                  value={revisionNotes}
+                  onChange={(e) => setRevisionNotes(e.target.value)}
+                  placeholder="Provide timestamps and notes for changes (e.g. 00:12 lower music, 00:35 fix caption typo)..."
+                  disabled={isSubmittingRevision}
+                  className="w-full text-xs p-3 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isSubmittingRevision}
+                onClick={() => {
+                  setRevisionWorkId(null);
+                  setRevisionNotes('');
+                  setRevisionTimecode('');
+                }}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
+                type="button"
+                id="btn-submit-client-revision"
+                disabled={isSubmittingRevision || !revisionNotes.trim()}
                 onClick={handleSubmitRevision}
-                className="px-4 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-xs"
+                className="px-4 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer transition"
               >
-                Submit Revision Request
+                {isSubmittingRevision ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    Submitting Revision...
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Submit Revision Request
+                  </>
+                )}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Notification Drawer for Client */}
+      <NotificationDrawer
+        isOpen={showNotifications}
+        onClose={() => setShowNotifications(false)}
+        filterRole="client"
+        currentEntityId={client.id}
+      />
 
       {/* Receipt Modal */}
       <PaymentReceiptModal
