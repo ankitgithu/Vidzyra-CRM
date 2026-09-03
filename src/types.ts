@@ -191,9 +191,11 @@ export interface EditorPayment {
 export interface Expense {
   id: string;
   name: string;
+  title?: string;
   category: string;
   amount: number;
   date: string;
+  paymentMethod?: string;
   notes: string;
   createdAt: string;
 }

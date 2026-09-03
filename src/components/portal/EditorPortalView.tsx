@@ -20,10 +20,15 @@ import { PaymentReceiptModal } from '../payments/PaymentReceiptModal';
 
 interface EditorPortalViewProps {
   editorId: string;
-  onExit: () => void;
+  onExit?: () => void;
+  isSharedPortal?: boolean;
 }
 
-export const EditorPortalView: React.FC<EditorPortalViewProps> = ({ editorId, onExit }) => {
+export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
+  editorId,
+  onExit,
+  isSharedPortal = false,
+}) => {
   const { editors, projects, editorPayments, getEditorStats, updateProject, settings } = useCrm();
 
   const editor = editors.find((e) => e.id === editorId);
@@ -38,12 +43,14 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({ editorId, on
           <p className="text-xs text-slate-500">
             The requested editor portal link is invalid or has expired. Please contact Vidzyra management.
           </p>
-          <button
-            onClick={onExit}
-            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-semibold"
-          >
-            Return to Admin Dashboard
-          </button>
+          {!isSharedPortal && onExit && (
+            <button
+              onClick={onExit}
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-semibold cursor-pointer"
+            >
+              Return to Admin Dashboard
+            </button>
+          )}
         </div>
       </div>
     );
@@ -58,17 +65,19 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({ editorId, on
           <h2 className="text-xl font-bold text-slate-900">Editor Portal Access Suspended</h2>
           <p className="text-xs text-slate-500 leading-relaxed">
             This editor portal is currently marked as{' '}
-            <strong className="text-slate-800">{editor.portalStatus}</strong>. Please contact Vidzyra admin to
+            <strong className="text-slate-800">{editor.portalStatus}</strong>. Please contact Vidzyra management to
             reactivate your portal.
           </p>
-          <div className="pt-2 flex justify-center gap-2">
-            <button
-              onClick={onExit}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold"
-            >
-              Exit to Admin
-            </button>
-          </div>
+          {!isSharedPortal && onExit && (
+            <div className="pt-2 flex justify-center gap-2">
+              <button
+                onClick={onExit}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Exit to Admin
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -110,22 +119,24 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({ editorId, on
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
-      {/* Top Banner */}
-      <div className="bg-purple-950 text-purple-200 px-4 py-2 text-xs flex items-center justify-between border-b border-purple-800">
-        <div className="flex items-center space-x-2">
-          <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
-          <span>
-            Viewing in <strong>Editor Portal Mode</strong> for <strong>{editor.name}</strong>
-          </span>
+      {/* Top Banner - Only rendered in Admin Preview mode */}
+      {!isSharedPortal && onExit && (
+        <div className="bg-purple-950 text-purple-200 px-4 py-2 text-xs flex items-center justify-between border-b border-purple-800">
+          <div className="flex items-center space-x-2">
+            <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
+            <span>
+              Viewing in <strong>Editor Portal Mode</strong> for <strong>{editor.name}</strong>
+            </span>
+          </div>
+          <button
+            onClick={onExit}
+            className="flex items-center gap-1 px-3 py-1 bg-purple-800 hover:bg-purple-700 text-white rounded-md text-[11px] font-semibold transition cursor-pointer"
+          >
+            <LogOut className="w-3 h-3" />
+            Exit Portal View
+          </button>
         </div>
-        <button
-          onClick={onExit}
-          className="flex items-center gap-1 px-3 py-1 bg-purple-800 hover:bg-purple-700 text-white rounded-md text-[11px] font-semibold transition"
-        >
-          <LogOut className="w-3 h-3" />
-          Exit Portal View
-        </button>
-      </div>
+      )}
 
       {/* Main Header */}
       <header className="bg-white border-b border-slate-200 shadow-2xs">

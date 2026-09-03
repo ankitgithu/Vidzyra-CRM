@@ -464,25 +464,6 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(LOCAL_STORAGE_KEY + '_settings', JSON.stringify(settings));
   }, [settings]);
 
-  // URL Hash / Query Parameter detection for Direct Portal Links
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const portalType = params.get('portal');
-    const portalToken = params.get('token');
-
-    if (portalType === 'client' && portalToken) {
-      const foundClient = clients.find((c) => c.portalToken === portalToken || c.id === portalToken);
-      if (foundClient) {
-        setActivePortalUser({ type: 'client', id: foundClient.id });
-      }
-    } else if (portalType === 'editor' && portalToken) {
-      const foundEditor = editors.find((e) => e.portalToken === portalToken || e.id === portalToken);
-      if (foundEditor) {
-        setActivePortalUser({ type: 'editor', id: foundEditor.id });
-      }
-    }
-  }, [clients, editors]);
-
   // Helper to format date/time
   const getFormattedDateTime = () => {
     const d = new Date();
@@ -921,13 +902,29 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteProject = (id: string) => {
     const project = projects.find((p) => p.id === id);
-    setProjects((prev) => prev.filter((p) => p.id !== id));
+    if (!project) return;
+    setProjects((prev) => {
+      const remaining = prev.filter((p) => p.id !== id);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(remaining));
+      } catch (err) {
+        console.error('Failed to sync projects to localStorage', err);
+      }
+      return remaining;
+    });
+
+    if (selectedWorkId === id) {
+      setSelectedWorkId(null);
+    }
+
     addActivity({
       who: 'Admin',
       action: 'Work deleted',
-      what: `Deleted project "${project?.name || id}"`,
+      what: `Deleted project "${project.name || id}"`,
       entityType: 'work',
       entityId: id,
+      clientId: project.clientId,
+      editorId: project.assignedTo || undefined,
     });
   };
 
@@ -1432,11 +1429,22 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteExpense = (id: string) => {
     const expense = expenses.find((e) => e.id === id);
-    setExpenses((prev) => prev.filter((e) => e.id !== id));
+    if (!expense) return;
+    setExpenses((prev) => {
+      const remaining = prev.filter((e) => e.id !== id);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_expenses', JSON.stringify(remaining));
+      } catch (err) {
+        console.error('Failed to update localStorage for expenses', err);
+      }
+      return remaining;
+    });
+
+    const expenseTitle = expense.name || expense.title || 'Expense';
     addActivity({
       who: 'Admin',
-      action: 'Expense removed',
-      what: `Removed expense "${expense?.name || id}"`,
+      action: 'Expense deleted',
+      what: `Deleted expense "${expenseTitle}" (₹${expense.amount.toLocaleString('en-IN')})`,
       entityType: 'expense',
       entityId: id,
     });

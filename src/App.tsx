@@ -23,6 +23,8 @@ import { EditorPortalView } from './components/portal/EditorPortalView';
 import { EditLinkModal } from './components/modals/EditLinkModal';
 import { SharePortalModal } from './components/modals/SharePortalModal';
 import { Client, Editor, WorkProject } from './types';
+import { AlertCircle } from 'lucide-react';
+import { getSharedPortalSession } from './utils/portalAuth';
 
 const MainApp: React.FC = () => {
   const {
@@ -32,6 +34,8 @@ const MainApp: React.FC = () => {
     searchQuery,
     setSearchQuery,
     projects,
+    clients,
+    editors,
     selectedWorkId,
     setSelectedWorkId,
   } = useCrm();
@@ -68,13 +72,54 @@ const MainApp: React.FC = () => {
     id: string;
   } | null>(null);
 
-  // If in client or editor portal simulation mode:
+  // 1. Standalone Shared Portal Route (isolated from Admin CRM)
+  const sharedPortal = getSharedPortalSession();
+  if (sharedPortal) {
+    if (sharedPortal.type === 'client') {
+      const client = clients.find((c) => c.portalToken === sharedPortal.token || c.id === sharedPortal.token);
+      if (!client) {
+        return (
+          <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-center">
+            <div className="bg-white p-8 rounded-2xl max-w-md w-full shadow-2xl space-y-4">
+              <AlertCircle className="w-12 h-12 text-rose-500 mx-auto" />
+              <h2 className="text-xl font-bold text-slate-900">Client Portal Not Found</h2>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                The requested client portal link is invalid or has expired. Please contact Vidzyra support.
+              </p>
+            </div>
+          </div>
+        );
+      }
+      return <ClientPortalView clientId={client.id} isSharedPortal={true} />;
+    }
+
+    if (sharedPortal.type === 'editor') {
+      const editor = editors.find((e) => e.portalToken === sharedPortal.token || e.id === sharedPortal.token);
+      if (!editor) {
+        return (
+          <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-center">
+            <div className="bg-white p-8 rounded-2xl max-w-md w-full shadow-2xl space-y-4">
+              <AlertCircle className="w-12 h-12 text-rose-500 mx-auto" />
+              <h2 className="text-xl font-bold text-slate-900">Editor Portal Not Found</h2>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                The requested editor portal link is invalid or has expired. Please contact Vidzyra management.
+              </p>
+            </div>
+          </div>
+        );
+      }
+      return <EditorPortalView editorId={editor.id} isSharedPortal={true} />;
+    }
+  }
+
+  // 2. Admin In-App Preview mode (when admin simulates portal within CRM)
   if (activePortalUser) {
     if (activePortalUser.type === 'client') {
       return (
         <ClientPortalView
           clientId={activePortalUser.id}
           onExit={() => setActivePortalUser(null)}
+          isSharedPortal={false}
         />
       );
     }
@@ -83,6 +128,7 @@ const MainApp: React.FC = () => {
         <EditorPortalView
           editorId={activePortalUser.id}
           onExit={() => setActivePortalUser(null)}
+          isSharedPortal={false}
         />
       );
     }

@@ -20,10 +20,15 @@ import { PaymentReceiptModal } from '../payments/PaymentReceiptModal';
 
 interface ClientPortalViewProps {
   clientId: string;
-  onExit: () => void;
+  onExit?: () => void;
+  isSharedPortal?: boolean;
 }
 
-export const ClientPortalView: React.FC<ClientPortalViewProps> = ({ clientId, onExit }) => {
+export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
+  clientId,
+  onExit,
+  isSharedPortal = false,
+}) => {
   const { clients, projects, clientPayments, getClientStats, updateProjectReview, settings } = useCrm();
 
   const client = clients.find((c) => c.id === clientId);
@@ -41,12 +46,14 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({ clientId, on
           <p className="text-xs text-slate-500">
             The requested client portal link is invalid or has expired. Please contact Vidzyra support.
           </p>
-          <button
-            onClick={onExit}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold"
-          >
-            Return to Admin Dashboard
-          </button>
+          {!isSharedPortal && onExit && (
+            <button
+              onClick={onExit}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold cursor-pointer"
+            >
+              Return to Admin Dashboard
+            </button>
+          )}
         </div>
       </div>
     );
@@ -64,14 +71,16 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({ clientId, on
             <strong className="text-slate-800">{client.portalStatus}</strong>. Please reach out to Vidzyra management
             to restore your project access.
           </p>
-          <div className="pt-2 flex justify-center gap-2">
-            <button
-              onClick={onExit}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold"
-            >
-              Exit to Admin
-            </button>
-          </div>
+          {!isSharedPortal && onExit && (
+            <div className="pt-2 flex justify-center gap-2">
+              <button
+                onClick={onExit}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Exit to Admin
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -125,22 +134,24 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({ clientId, on
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
-      {/* Top Banner (Admin simulator notice) */}
-      <div className="bg-indigo-950 text-indigo-200 px-4 py-2 text-xs flex items-center justify-between border-b border-indigo-800">
-        <div className="flex items-center space-x-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span>
-            Viewing in <strong>Client Portal Mode</strong> for <strong>{client.name}</strong>
-          </span>
+      {/* Top Banner (Admin simulator notice) - Only rendered in Admin Preview mode */}
+      {!isSharedPortal && onExit && (
+        <div className="bg-indigo-950 text-indigo-200 px-4 py-2 text-xs flex items-center justify-between border-b border-indigo-800">
+          <div className="flex items-center space-x-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>
+              Viewing in <strong>Client Portal Mode</strong> for <strong>{client.name}</strong>
+            </span>
+          </div>
+          <button
+            onClick={onExit}
+            className="flex items-center gap-1 px-3 py-1 bg-indigo-800 hover:bg-indigo-700 text-white rounded-md text-[11px] font-semibold transition cursor-pointer"
+          >
+            <LogOut className="w-3 h-3" />
+            Exit Portal View
+          </button>
         </div>
-        <button
-          onClick={onExit}
-          className="flex items-center gap-1 px-3 py-1 bg-indigo-800 hover:bg-indigo-700 text-white rounded-md text-[11px] font-semibold transition"
-        >
-          <LogOut className="w-3 h-3" />
-          Exit Portal View
-        </button>
-      </div>
+      )}
 
       {/* Main Header */}
       <header className="bg-white border-b border-slate-200 shadow-2xs">

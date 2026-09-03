@@ -367,41 +367,75 @@ export const WorkDetailModal: React.FC<WorkDetailModalProps> = ({
 
           {/* Delete confirmation section */}
           <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
-            {showDeleteConfirm ? (
-              <div className="flex items-center space-x-2 bg-rose-50 p-2.5 rounded-xl border border-rose-300">
-                <span className="text-rose-900 font-bold text-xs">Delete this project?</span>
-                <button
-                  onClick={handleDelete}
-                  className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded font-bold text-xs"
-                >
-                  Yes, Delete
-                </button>
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="px-2.5 py-1 bg-white border border-slate-300 rounded text-slate-700 text-xs"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="text-rose-600 hover:text-rose-800 flex items-center gap-1 font-semibold text-xs"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                Delete Project
-              </button>
-            )}
+            <button
+              id="btn-delete-work-detail"
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="text-rose-600 hover:text-rose-800 flex items-center gap-1 font-semibold text-xs cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete Project
+            </button>
 
             <button
               onClick={onClose}
-              className="px-4 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg transition"
+              className="px-4 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg transition cursor-pointer"
             >
               Close
             </button>
           </div>
         </div>
       </div>
+
+      {/* Delete Work / Project Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div
+          className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in"
+          onClick={() => setShowDeleteConfirm(false)}
+        >
+          <div
+            id="delete-work-detail-modal"
+            className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-bold text-slate-900">Delete Work / Project?</h3>
+                <p className="text-xs text-slate-500 truncate">
+                  {project.name}
+                  {project.workType ? ` • ${project.workType}` : ''}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Are you sure you want to delete this Work / Project? This action cannot be undone.
+            </p>
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                id="cancel-delete-work-detail-btn"
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                id="confirm-delete-work-detail-btn"
+                type="button"
+                onClick={handleDelete}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition shadow-xs cursor-pointer"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

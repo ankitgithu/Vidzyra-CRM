@@ -163,18 +163,30 @@ export const SharePortalModal: React.FC<SharePortalModalProps> = ({
 
           {/* Test View Switcher */}
           <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-            <span className="text-xs text-slate-500">Preview as this user:</span>
-            <button
-              id="btn-open-preview-from-share"
-              onClick={() => {
-                setActivePortalUser({ type: entityType, id: target.id });
-                onClose();
-              }}
-              className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              Open Portal View
-            </button>
+            <span className="text-xs text-slate-500">Test or Preview:</span>
+            <div className="flex items-center space-x-2">
+              <a
+                id="btn-open-shared-link-new-tab"
+                href={portalUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900 font-medium px-2 py-1 rounded hover:bg-slate-100 transition"
+                title="Test how client/editor sees the standalone shared link"
+              >
+                <ExternalLink className="w-3 h-3" />
+                Test Link (New Tab)
+              </a>
+              <button
+                id="btn-open-preview-from-share"
+                onClick={() => {
+                  setActivePortalUser({ type: entityType, id: target.id });
+                  onClose();
+                }}
+                className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-semibold px-2 py-1 rounded hover:bg-indigo-50 transition cursor-pointer"
+              >
+                Open Admin Preview
+              </button>
+            </div>
           </div>
         </div>
       </div>
