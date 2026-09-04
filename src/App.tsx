@@ -18,6 +18,7 @@ import { PaymentFormModal } from './components/payments/PaymentFormModal';
 import { Reports } from './components/reports/Reports';
 import { DataCenter } from './components/datacenter/DataCenter';
 import { Settings } from './components/settings/Settings';
+import { ProjectChatManager } from './components/chat/ProjectChatManager';
 import { ClientPortalView } from './components/portal/ClientPortalView';
 import { EditorPortalView } from './components/portal/EditorPortalView';
 import { EditLinkModal } from './components/modals/EditLinkModal';
@@ -265,6 +266,8 @@ const MainApp: React.FC = () => {
               onEditLinks={handleOpenEditLinks}
             />
           )}
+
+          {activeTab === 'chats' && <ProjectChatManager />}
 
           {activeTab === 'payments' && (
             <PaymentList onOpenNewPayment={handleOpenNewPayment} />

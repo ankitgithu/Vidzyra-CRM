@@ -121,7 +121,7 @@ export function generatePaymentReceiptJpg(data: ReceiptData): Promise<string> {
 
     ctx.fillStyle = isClient ? '#15803d' : '#7e22ce';
     ctx.font = 'bold 40px sans-serif';
-    ctx.fillText(`₹${data.amount.toLocaleString('en-IN')}`, width - 535, 268);
+    ctx.fillText(`₹${(data.amount || 0).toLocaleString('en-IN')}`, width - 535, 268);
 
     ctx.fillStyle = isClient ? '#166534' : '#6b21a8';
     ctx.font = 'bold 14px sans-serif';
@@ -147,7 +147,7 @@ export function generatePaymentReceiptJpg(data: ReceiptData): Promise<string> {
     ctx.textAlign = 'right';
     ctx.fillStyle = '#0f172a';
     ctx.font = 'bold 15px sans-serif';
-    ctx.fillText(`₹${data.totalAmount.toLocaleString('en-IN')}`, width - 80, rowY);
+    ctx.fillText(`₹${(data.totalAmount || 0).toLocaleString('en-IN')}`, width - 80, rowY);
     ctx.textAlign = 'left';
 
     // Divider
@@ -165,7 +165,7 @@ export function generatePaymentReceiptJpg(data: ReceiptData): Promise<string> {
     ctx.textAlign = 'right';
     ctx.fillStyle = '#16a34a';
     ctx.font = 'bold 15px sans-serif';
-    ctx.fillText(`₹${data.totalPaid.toLocaleString('en-IN')}`, width - 80, rowY);
+    ctx.fillText(`₹${(data.totalPaid || 0).toLocaleString('en-IN')}`, width - 80, rowY);
     ctx.textAlign = 'left';
 
     // Divider
@@ -181,9 +181,9 @@ export function generatePaymentReceiptJpg(data: ReceiptData): Promise<string> {
     ctx.font = 'bold 15px sans-serif';
     ctx.fillText(`Remaining Balance Outstanding`, 80, rowY);
     ctx.textAlign = 'right';
-    ctx.fillStyle = data.remainingAmount > 0 ? '#dc2626' : '#16a34a';
+    ctx.fillStyle = (data.remainingAmount || 0) > 0 ? '#dc2626' : '#16a34a';
     ctx.font = 'bold 16px sans-serif';
-    ctx.fillText(data.remainingAmount > 0 ? `₹${data.remainingAmount.toLocaleString('en-IN')}` : '₹0 (Fully Cleared)', width - 80, rowY);
+    ctx.fillText((data.remainingAmount || 0) > 0 ? `₹${(data.remainingAmount || 0).toLocaleString('en-IN')}` : '₹0 (Fully Cleared)', width - 80, rowY);
     ctx.textAlign = 'left';
 
     // Notes if any

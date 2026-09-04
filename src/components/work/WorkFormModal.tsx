@@ -270,7 +270,7 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
                 Client Billing
               </span>
               <span className="text-indigo-700 font-semibold">
-                Total: ₹{totalBilling.toLocaleString()}
+                Total: ₹{(totalBilling || 0).toLocaleString()}
               </span>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -288,7 +288,7 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
               <div className="flex flex-col justify-end">
                 <span className="text-[11px] text-slate-500 mb-1">Billing Formula</span>
                 <span className="text-slate-700 font-mono">
-                  {quantity} units × ₹{clientRate} = ₹{totalBilling.toLocaleString()}
+                  {quantity} units × ₹{clientRate} = ₹{(totalBilling || 0).toLocaleString()}
                 </span>
               </div>
             </div>
@@ -354,8 +354,8 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
                 </div>
 
                 <div className="sm:col-span-2 flex items-center justify-between p-2.5 bg-purple-50 border border-purple-200 rounded-lg text-purple-900 font-medium">
-                  <span>Editor Cost: ₹{editorCost.toLocaleString()}</span>
-                  <span className="font-bold text-emerald-700">Estimated Agency Profit: ₹{profit.toLocaleString()}</span>
+                  <span>Editor Cost: ₹{(editorCost || 0).toLocaleString()}</span>
+                  <span className="font-bold text-emerald-700">Estimated Agency Profit: ₹{(profit || 0).toLocaleString()}</span>
                 </div>
               </div>
             )}

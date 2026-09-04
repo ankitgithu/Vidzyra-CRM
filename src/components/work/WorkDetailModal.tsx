@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
 import { ProjectStatus } from '../../types';
+import { ProjectChatModal } from '../chat/ProjectChatModal';
 
 interface WorkDetailModalProps {
   isOpen: boolean;
@@ -44,6 +45,7 @@ export const WorkDetailModal: React.FC<WorkDetailModalProps> = ({
 
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showChatModal, setShowChatModal] = useState(false);
 
   if (!isOpen || !workId) return null;
 
@@ -110,6 +112,15 @@ export const WorkDetailModal: React.FC<WorkDetailModalProps> = ({
           </div>
           <div className="flex items-center space-x-2">
             <button
+              id={`btn-admin-work-chat-${project.id}`}
+              onClick={() => setShowChatModal(true)}
+              className="px-3 py-1.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+              title="Open Project Chat monitor"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              Chat
+            </button>
+            <button
               onClick={() => onEditWork(project.id)}
               className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
             >
@@ -168,7 +179,7 @@ export const WorkDetailModal: React.FC<WorkDetailModalProps> = ({
             <div className="p-3.5 bg-indigo-50/50 border border-indigo-200 rounded-xl">
               <span className="text-[10px] font-bold uppercase text-indigo-700">Client Billing</span>
               <div className="text-lg font-bold text-indigo-900 mt-1">
-                ₹{project.totalBilling.toLocaleString()}
+                ₹{(project.totalBilling || 0).toLocaleString()}
               </div>
               <span className="text-[10px] text-indigo-600">
                 {project.quantity} × ₹{project.clientRate}
@@ -178,7 +189,7 @@ export const WorkDetailModal: React.FC<WorkDetailModalProps> = ({
             <div className="p-3.5 bg-purple-50/50 border border-purple-200 rounded-xl">
               <span className="text-[10px] font-bold uppercase text-purple-700">Editor Cost</span>
               <div className="text-lg font-bold text-purple-900 mt-1">
-                ₹{editorCost.toLocaleString()}
+                ₹{(editorCost || 0).toLocaleString()}
               </div>
               <span className="text-[10px] text-purple-600">
                 {project.workDoneBy === 'Self' ? 'In-house (₹0 cost)' : `${project.quantity} × ₹${project.editorRate || 0}`}
@@ -188,7 +199,7 @@ export const WorkDetailModal: React.FC<WorkDetailModalProps> = ({
             <div className="p-3.5 bg-emerald-50/50 border border-emerald-200 rounded-xl">
               <span className="text-[10px] font-bold uppercase text-emerald-700">Agency Net Profit</span>
               <div className="text-lg font-bold text-emerald-800 mt-1">
-                ₹{profit.toLocaleString()}
+                ₹{(profit || 0).toLocaleString()}
               </div>
               <span className="text-[10px] text-emerald-600 font-semibold">
                 {profitMargin}% Profit Margin
@@ -435,6 +446,18 @@ export const WorkDetailModal: React.FC<WorkDetailModalProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Project Chat Modal (Admin Monitor) */}
+      {showChatModal && (
+        <ProjectChatModal
+          isOpen={showChatModal}
+          onClose={() => setShowChatModal(false)}
+          projectId={project.id}
+          currentRole="admin"
+          currentUserId="admin"
+          currentUserName="Vidzyra Admin"
+        />
       )}
     </div>
   );

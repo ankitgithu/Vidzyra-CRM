@@ -358,11 +358,11 @@ export const Reports: React.FC = () => {
     ctx.font = '14px sans-serif';
     ctx.fillStyle = '#cbd5e1';
     ctx.fillText(`• Total Deliverables in Scope: ${filteredProjects.length}`, 70, 230);
-    ctx.fillText(`• Total Agency Revenue: ₹${financialData.totalRevenue.toLocaleString()}`, 70, 270);
-    ctx.fillText(`• Total Editor Cost: ₹${financialData.totalEditorCost.toLocaleString()}`, 70, 310);
-    ctx.fillText(`• Net Realized Profit: ₹${financialData.netProfit.toLocaleString()} (${financialData.profitMarginPercentage}%)`, 70, 350);
-    ctx.fillText(`• Client Collections: ₹${financialData.totalCashInflow.toLocaleString()}`, 70, 390);
-    ctx.fillText(`• Total Expenses: ₹${financialData.totalExpenses.toLocaleString()}`, 70, 430);
+    ctx.fillText(`• Total Agency Revenue: ₹${(financialData.totalRevenue || 0).toLocaleString()}`, 70, 270);
+    ctx.fillText(`• Total Editor Cost: ₹${(financialData.totalEditorCost || 0).toLocaleString()}`, 70, 310);
+    ctx.fillText(`• Net Realized Profit: ₹${(financialData.netProfit || 0).toLocaleString()} (${financialData.profitMarginPercentage || 0}%)`, 70, 350);
+    ctx.fillText(`• Client Collections: ₹${(financialData.totalCashInflow || 0).toLocaleString()}`, 70, 390);
+    ctx.fillText(`• Total Expenses: ₹${(financialData.totalExpenses || 0).toLocaleString()}`, 70, 430);
 
     ctx.font = 'italic 12px sans-serif';
     ctx.fillStyle = '#64748b';
@@ -379,10 +379,10 @@ export const Reports: React.FC = () => {
       `📊 *${settings.businessName} - ${activeReport.toUpperCase()} REPORT*\n` +
       `📅 Period: ${datePreset.toUpperCase()} (${startDate || 'Start'} to ${endDate || 'Now'})\n\n` +
       `• Total Deliverables: ${filteredProjects.length}\n` +
-      `• Total Invoiced: ₹${financialData.totalRevenue.toLocaleString()}\n` +
-      `• Editor Costs: ₹${financialData.totalEditorCost.toLocaleString()}\n` +
-      `• Net Profit: ₹${financialData.netProfit.toLocaleString()} (${financialData.profitMarginPercentage}% Margin)\n` +
-      `• Cash Collected: ₹${financialData.totalCashInflow.toLocaleString()}\n\n` +
+      `• Total Invoiced: ₹${(financialData.totalRevenue || 0).toLocaleString()}\n` +
+      `• Editor Costs: ₹${(financialData.totalEditorCost || 0).toLocaleString()}\n` +
+      `• Net Profit: ₹${(financialData.netProfit || 0).toLocaleString()} (${financialData.profitMarginPercentage || 0}% Margin)\n` +
+      `• Cash Collected: ₹${(financialData.totalCashInflow || 0).toLocaleString()}\n\n` +
       `_Generated via Vidzyra CRM_`
     );
   };
@@ -657,19 +657,19 @@ export const Reports: React.FC = () => {
             <div className="bg-white p-4 rounded-xl border border-indigo-200 bg-indigo-50/20 shadow-2xs">
               <span className="text-[10px] font-bold uppercase text-indigo-700">Total Client Billing</span>
               <div className="text-xl font-bold text-indigo-900 mt-1">
-                ₹{clientReportRows.reduce((a, b) => a + b.totalBilling, 0).toLocaleString()}
+                ₹{clientReportRows.reduce((a, b) => a + (b.totalBilling || 0), 0).toLocaleString()}
               </div>
             </div>
             <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/20 shadow-2xs">
               <span className="text-[10px] font-bold uppercase text-emerald-700">Total Cash Received</span>
               <div className="text-xl font-bold text-emerald-700 mt-1">
-                ₹{clientReportRows.reduce((a, b) => a + b.totalPaid, 0).toLocaleString()}
+                ₹{clientReportRows.reduce((a, b) => a + (b.totalPaid || 0), 0).toLocaleString()}
               </div>
             </div>
             <div className="bg-white p-4 rounded-xl border border-rose-200 bg-rose-50/20 shadow-2xs">
               <span className="text-[10px] font-bold uppercase text-rose-700">Total Outstanding</span>
               <div className="text-xl font-bold text-rose-700 mt-1">
-                ₹{clientReportRows.reduce((a, b) => a + Math.max(0, b.remaining), 0).toLocaleString()}
+                ₹{clientReportRows.reduce((a, b) => a + Math.max(0, b.remaining || 0), 0).toLocaleString()}
               </div>
             </div>
           </div>
@@ -704,14 +704,14 @@ export const Reports: React.FC = () => {
                       </td>
                       <td className="px-4 py-3.5 text-center font-bold text-slate-800">{r.totalWork}</td>
                       <td className="px-4 py-3.5 text-right font-bold text-slate-900">
-                        ₹{r.totalBilling.toLocaleString()}
+                        ₹{(r.totalBilling || 0).toLocaleString()}
                       </td>
                       <td className="px-4 py-3.5 text-right font-bold text-emerald-600">
-                        ₹{r.totalPaid.toLocaleString()}
+                        ₹{(r.totalPaid || 0).toLocaleString()}
                       </td>
                       <td className="px-4 py-3.5 text-right font-bold">
-                        <span className={r.remaining > 0 ? 'text-rose-600' : 'text-slate-600'}>
-                          ₹{r.remaining.toLocaleString()}
+                        <span className={(r.remaining || 0) > 0 ? 'text-rose-600' : 'text-slate-600'}>
+                          ₹{(r.remaining || 0).toLocaleString()}
                         </span>
                       </td>
                       <td className="px-6 py-3.5 text-center">
@@ -752,19 +752,19 @@ export const Reports: React.FC = () => {
             <div className="bg-white p-4 rounded-xl border border-purple-200 bg-purple-50/20 shadow-2xs">
               <span className="text-[10px] font-bold uppercase text-purple-700">Total Editor Earnings</span>
               <div className="text-xl font-bold text-purple-900 mt-1">
-                ₹{editorReportRows.reduce((a, b) => a + b.totalEarnings, 0).toLocaleString()}
+                ₹{editorReportRows.reduce((a, b) => a + (b.totalEarnings || 0), 0).toLocaleString()}
               </div>
             </div>
             <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/20 shadow-2xs">
               <span className="text-[10px] font-bold uppercase text-emerald-700">Total Paid Out</span>
               <div className="text-xl font-bold text-emerald-700 mt-1">
-                ₹{editorReportRows.reduce((a, b) => a + b.paidAmount, 0).toLocaleString()}
+                ₹{editorReportRows.reduce((a, b) => a + (b.paidAmount || 0), 0).toLocaleString()}
               </div>
             </div>
             <div className="bg-white p-4 rounded-xl border border-rose-200 bg-rose-50/20 shadow-2xs">
               <span className="text-[10px] font-bold uppercase text-rose-700">Pending Compensation</span>
               <div className="text-xl font-bold text-rose-700 mt-1">
-                ₹{editorReportRows.reduce((a, b) => a + Math.max(0, b.remainingBalance), 0).toLocaleString()}
+                ₹{editorReportRows.reduce((a, b) => a + Math.max(0, b.remainingBalance || 0), 0).toLocaleString()}
               </div>
             </div>
           </div>
@@ -802,14 +802,14 @@ export const Reports: React.FC = () => {
                       <td className="px-4 py-3.5 text-center font-bold text-emerald-600">{r.completedCount}</td>
                       <td className="px-4 py-3.5 text-center font-bold text-amber-600">{r.pendingCount}</td>
                       <td className="px-4 py-3.5 text-right font-bold text-purple-700">
-                        ₹{r.totalEarnings.toLocaleString()}
+                        ₹{(r.totalEarnings || 0).toLocaleString()}
                       </td>
                       <td className="px-4 py-3.5 text-right font-bold text-emerald-600">
-                        ₹{r.paidAmount.toLocaleString()}
+                        ₹{(r.paidAmount || 0).toLocaleString()}
                       </td>
                       <td className="px-6 py-3.5 text-right font-bold">
-                        <span className={r.remainingBalance > 0 ? 'text-rose-600' : 'text-slate-600'}>
-                          ₹{r.remainingBalance.toLocaleString()}
+                        <span className={(r.remainingBalance || 0) > 0 ? 'text-rose-600' : 'text-slate-600'}>
+                          ₹{(r.remainingBalance || 0).toLocaleString()}
                         </span>
                       </td>
                     </tr>
@@ -834,19 +834,19 @@ export const Reports: React.FC = () => {
             <div className="bg-white p-4 rounded-xl border border-indigo-200 bg-indigo-50/20 shadow-2xs">
               <span className="text-[10px] font-bold uppercase text-indigo-700">Total Billing</span>
               <div className="text-xl font-bold text-indigo-900 mt-1">
-                ₹{financialData.totalRevenue.toLocaleString()}
+                ₹{(financialData.totalRevenue || 0).toLocaleString()}
               </div>
             </div>
             <div className="bg-white p-4 rounded-xl border border-purple-200 bg-purple-50/20 shadow-2xs">
               <span className="text-[10px] font-bold uppercase text-purple-700">Total Editor Cost</span>
               <div className="text-xl font-bold text-purple-900 mt-1">
-                ₹{financialData.totalEditorCost.toLocaleString()}
+                ₹{(financialData.totalEditorCost || 0).toLocaleString()}
               </div>
             </div>
             <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/20 shadow-2xs">
               <span className="text-[10px] font-bold uppercase text-emerald-700">Gross Margin / Profit</span>
               <div className="text-xl font-bold text-emerald-700 mt-1">
-                ₹{financialData.grossProfit.toLocaleString()}
+                ₹{(financialData.grossProfit || 0).toLocaleString()}
               </div>
             </div>
           </div>
@@ -916,10 +916,10 @@ export const Reports: React.FC = () => {
                             )}
                           </td>
                           <td className="px-3 py-3 text-right font-medium text-slate-600">
-                            ₹{cost.toLocaleString()}
+                            ₹{(cost || 0).toLocaleString()}
                           </td>
                           <td className="px-3 py-3 text-right font-bold text-emerald-600">
-                            ₹{profit.toLocaleString()}
+                            ₹{(profit || 0).toLocaleString()}
                           </td>
                           <td className="px-3 py-3 text-center">
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800">
@@ -947,7 +947,7 @@ export const Reports: React.FC = () => {
             <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/20 shadow-2xs">
               <span className="text-[10px] font-bold uppercase text-emerald-700">Total Payments Received</span>
               <div className="text-2xl font-bold text-emerald-700 mt-1">
-                ₹{totalPaymentsReceived.toLocaleString()}
+                ₹{(totalPaymentsReceived || 0).toLocaleString()}
               </div>
               <span className="text-[11px] text-emerald-600">{filteredClientPayments.length} client receipts</span>
             </div>
@@ -955,7 +955,7 @@ export const Reports: React.FC = () => {
             <div className="bg-white p-4 rounded-xl border border-purple-200 bg-purple-50/20 shadow-2xs">
               <span className="text-[10px] font-bold uppercase text-purple-700">Total Paid Out (Editors)</span>
               <div className="text-2xl font-bold text-purple-900 mt-1">
-                ₹{totalPaymentsPaidOut.toLocaleString()}
+                ₹{(totalPaymentsPaidOut || 0).toLocaleString()}
               </div>
               <span className="text-[11px] text-purple-600">{filteredEditorPayments.length} disbursements</span>
             </div>
@@ -963,7 +963,7 @@ export const Reports: React.FC = () => {
             <div className="bg-white p-4 rounded-xl border border-indigo-200 bg-indigo-50/20 shadow-2xs">
               <span className="text-[10px] font-bold uppercase text-indigo-700">Net Payments In-Hand</span>
               <div className="text-2xl font-bold text-indigo-900 mt-1">
-                ₹{(totalPaymentsReceived - totalPaymentsPaidOut).toLocaleString()}
+                ₹{((totalPaymentsReceived || 0) - (totalPaymentsPaidOut || 0)).toLocaleString()}
               </div>
               <span className="text-[11px] text-indigo-600">Net positive inflow</span>
             </div>
@@ -977,10 +977,10 @@ export const Reports: React.FC = () => {
                 <div key={method} className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                   <div className="font-bold text-slate-800 text-xs truncate">{method}</div>
                   <div className="text-sm font-bold text-slate-900 mt-1">
-                    ₹{(data.received - data.paidOut).toLocaleString()}
+                    ₹{((data.received || 0) - (data.paidOut || 0)).toLocaleString()}
                   </div>
                   <div className="text-[10px] text-slate-500 mt-0.5">
-                    Rec: ₹{data.received.toLocaleString()}
+                    Rec: ₹{(data.received || 0).toLocaleString()}
                   </div>
                 </div>
               ))}
@@ -1024,7 +1024,7 @@ export const Reports: React.FC = () => {
                         <td className="px-4 py-3.5 text-slate-700">{p.paymentMethod}</td>
                         <td className="px-4 py-3.5 font-mono text-slate-500">{p.referenceNumber || '—'}</td>
                         <td className="px-6 py-3.5 text-right font-bold text-emerald-600">
-                          +₹{p.amount.toLocaleString()}
+                          +₹{(p.amount || 0).toLocaleString()}
                         </td>
                       </tr>
                     );
@@ -1044,7 +1044,7 @@ export const Reports: React.FC = () => {
                         <td className="px-4 py-3.5 text-slate-700">{p.paymentMethod}</td>
                         <td className="px-4 py-3.5 font-mono text-slate-500">{p.referenceNumber || '—'}</td>
                         <td className="px-6 py-3.5 text-right font-bold text-purple-700">
-                          -₹{p.amount.toLocaleString()}
+                          -₹{(p.amount || 0).toLocaleString()}
                         </td>
                       </tr>
                     );
@@ -1065,35 +1065,35 @@ export const Reports: React.FC = () => {
             <div className="bg-white p-3.5 rounded-xl border border-slate-200">
               <span className="text-[10px] font-bold uppercase text-slate-400">Total Revenue</span>
               <div className="text-lg font-bold text-slate-900 mt-1">
-                ₹{financialData.totalRevenue.toLocaleString()}
+                ₹{(financialData.totalRevenue || 0).toLocaleString()}
               </div>
             </div>
 
             <div className="bg-white p-3.5 rounded-xl border border-purple-200 bg-purple-50/20">
               <span className="text-[10px] font-bold uppercase text-purple-700">Editor Cost</span>
               <div className="text-lg font-bold text-purple-700 mt-1">
-                ₹{financialData.totalEditorCost.toLocaleString()}
+                ₹{(financialData.totalEditorCost || 0).toLocaleString()}
               </div>
             </div>
 
             <div className="bg-white p-3.5 rounded-xl border border-indigo-200 bg-indigo-50/20">
               <span className="text-[10px] font-bold uppercase text-indigo-700">Gross Profit</span>
               <div className="text-lg font-bold text-indigo-900 mt-1">
-                ₹{financialData.grossProfit.toLocaleString()}
+                ₹{(financialData.grossProfit || 0).toLocaleString()}
               </div>
             </div>
 
             <div className="bg-white p-3.5 rounded-xl border border-rose-200 bg-rose-50/20">
               <span className="text-[10px] font-bold uppercase text-rose-700">Agency Expenses</span>
               <div className="text-lg font-bold text-rose-700 mt-1">
-                ₹{financialData.totalExpenses.toLocaleString()}
+                ₹{(financialData.totalExpenses || 0).toLocaleString()}
               </div>
             </div>
 
             <div className="bg-white p-3.5 rounded-xl border border-emerald-300 bg-emerald-50/40">
-              <span className="text-[10px] font-bold uppercase text-emerald-800">Net Profit ({financialData.profitMarginPercentage}%)</span>
+              <span className="text-[10px] font-bold uppercase text-emerald-800">Net Profit ({financialData.profitMarginPercentage || 0}%)</span>
               <div className="text-lg font-bold text-emerald-800 mt-1">
-                ₹{financialData.netProfit.toLocaleString()}
+                ₹{(financialData.netProfit || 0).toLocaleString()}
               </div>
             </div>
           </div>
@@ -1103,30 +1103,30 @@ export const Reports: React.FC = () => {
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-bold text-slate-900 text-sm">P&amp;L Financial Waterfall Calculation</h3>
               <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Profit Margin: {financialData.profitMarginPercentage}%
+                Profit Margin: {financialData.profitMarginPercentage || 0}%
               </span>
             </div>
 
             <div className="divide-y divide-slate-100 text-xs">
               <div className="py-2.5 flex items-center justify-between">
                 <span className="text-slate-600">Total Client Invoiced Revenue</span>
-                <span className="font-bold text-slate-900">₹{financialData.totalRevenue.toLocaleString()}</span>
+                <span className="font-bold text-slate-900">₹{(financialData.totalRevenue || 0).toLocaleString()}</span>
               </div>
               <div className="py-2.5 flex items-center justify-between text-purple-700">
                 <span>(-) Total Editor Production &amp; Editing Costs</span>
-                <span className="font-bold">- ₹{financialData.totalEditorCost.toLocaleString()}</span>
+                <span className="font-bold">- ₹{(financialData.totalEditorCost || 0).toLocaleString()}</span>
               </div>
               <div className="py-2.5 flex items-center justify-between font-bold text-indigo-900 bg-indigo-50/40 px-3 rounded-lg">
                 <span>(=) Gross Profit Margin</span>
-                <span>₹{financialData.grossProfit.toLocaleString()}</span>
+                <span>₹{(financialData.grossProfit || 0).toLocaleString()}</span>
               </div>
               <div className="py-2.5 flex items-center justify-between text-rose-600">
                 <span>(-) Operational Software &amp; Assets Expenses</span>
-                <span className="font-bold">- ₹{financialData.totalExpenses.toLocaleString()}</span>
+                <span className="font-bold">- ₹{(financialData.totalExpenses || 0).toLocaleString()}</span>
               </div>
               <div className="py-2.5 flex items-center justify-between font-bold text-emerald-800 bg-emerald-50/50 px-3 rounded-lg text-sm">
                 <span>(=) Net Agency Profit</span>
-                <span>₹{financialData.netProfit.toLocaleString()}</span>
+                <span>₹{(financialData.netProfit || 0).toLocaleString()}</span>
               </div>
             </div>
           </div>

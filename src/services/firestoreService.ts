@@ -6,6 +6,8 @@ import {
   deleteDoc,
   onSnapshot,
   query,
+  where,
+  getDocs,
   writeBatch,
   Unsubscribe,
 } from 'firebase/firestore';
@@ -20,6 +22,7 @@ import {
   Activity,
   NotificationItem,
   BusinessSettings,
+  ChatMessage,
 } from '../types';
 
 export const COLLECTIONS = {
@@ -33,11 +36,37 @@ export const COLLECTIONS = {
   REVISIONS: 'revisions',
   SETTINGS: 'settings',
   SHARED_LINKS: 'sharedLinks',
+  CHAT_MESSAGES: 'chatMessages',
 } as const;
 
 // ==========================================
-// REAL-TIME LISTENERS
+// REAL-TIME LISTENERS (With Safe Date & Type Normalization)
 // ==========================================
+
+export function safeDateString(val: unknown): string {
+  if (!val) return '';
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number') return new Date(val).toISOString();
+  if (typeof val === 'object' && val !== null) {
+    if ('toDate' in val && typeof (val as any).toDate === 'function') {
+      try {
+        return (val as any).toDate().toISOString();
+      } catch {
+        return '';
+      }
+    }
+    if ('seconds' in val && typeof (val as any).seconds === 'number') {
+      return new Date((val as any).seconds * 1000).toISOString();
+    }
+  }
+  return String(val);
+}
+
+export function safeSortDesc(aDate: unknown, bDate: unknown): number {
+  const sa = safeDateString(aDate);
+  const sb = safeDateString(bDate);
+  return sb.localeCompare(sa);
+}
 
 export function subscribeClients(
   onData: (clients: Client[]) => void,
@@ -49,10 +78,15 @@ export function subscribeClients(
     (snapshot) => {
       const items: Client[] = [];
       snapshot.forEach((docSnap) => {
-        items.push({ ...(docSnap.data() as Client), id: docSnap.id });
+        const raw = docSnap.data();
+        items.push({
+          ...(raw as Client),
+          id: docSnap.id,
+          createdAt: safeDateString(raw.createdAt) || new Date().toISOString(),
+        });
       });
       // Sort newest first
-      items.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      items.sort((a, b) => safeSortDesc(a.createdAt, b.createdAt));
       onData(items);
     },
     (err) => {
@@ -72,9 +106,15 @@ export function subscribeEditors(
     (snapshot) => {
       const items: Editor[] = [];
       snapshot.forEach((docSnap) => {
-        items.push({ ...(docSnap.data() as Editor), id: docSnap.id });
+        const raw = docSnap.data();
+        items.push({
+          ...(raw as Editor),
+          id: docSnap.id,
+          editorRate: Number(raw.editorRate) || 0,
+          createdAt: safeDateString(raw.createdAt) || new Date().toISOString(),
+        });
       });
-      items.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      items.sort((a, b) => safeSortDesc(a.createdAt, b.createdAt));
       onData(items);
     },
     (err) => {
@@ -94,9 +134,28 @@ export function subscribeProjects(
     (snapshot) => {
       const items: WorkProject[] = [];
       snapshot.forEach((docSnap) => {
-        items.push({ ...(docSnap.data() as WorkProject), id: docSnap.id });
+        const raw = docSnap.data();
+        const quantity = Number(raw.quantity) || 1;
+        const clientRate = Number(raw.clientRate) || 0;
+        const totalBilling =
+          typeof raw.totalBilling === 'number' && !isNaN(raw.totalBilling)
+            ? raw.totalBilling
+            : quantity * clientRate;
+        const timeline = Array.isArray(raw.timeline) ? raw.timeline : [];
+
+        items.push({
+          ...(raw as WorkProject),
+          id: docSnap.id,
+          quantity,
+          clientRate,
+          editorRate: Number(raw.editorRate) || 0,
+          totalBilling,
+          timeline,
+          createdAt: safeDateString(raw.createdAt) || new Date().toISOString(),
+          dueDate: safeDateString(raw.dueDate) || raw.dueDate || '',
+        });
       });
-      items.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      items.sort((a, b) => safeSortDesc(a.createdAt, b.createdAt));
       onData(items);
     },
     (err) => {
@@ -119,8 +178,18 @@ export function subscribePayments(
 
       snapshot.forEach((docSnap) => {
         const raw = docSnap.data();
-        const item = { ...raw, id: docSnap.id };
         const category = raw.paymentCategory;
+        const amount = Number(raw.amount) || 0;
+        const date = safeDateString(raw.date || raw.paymentDate);
+        const createdAt = safeDateString(raw.createdAt) || new Date().toISOString();
+
+        const item = {
+          ...raw,
+          id: docSnap.id,
+          amount,
+          date,
+          createdAt,
+        };
 
         if (category === 'editor' || (!category && raw.editorId && !raw.clientId)) {
           editorPays.push(item as EditorPayment);
@@ -129,8 +198,8 @@ export function subscribePayments(
         }
       });
 
-      clientPays.sort((a, b) => (b.createdAt || b.date || '').localeCompare(a.createdAt || a.date || ''));
-      editorPays.sort((a, b) => (b.createdAt || b.date || '').localeCompare(a.createdAt || a.date || ''));
+      clientPays.sort((a, b) => safeSortDesc(a.createdAt || a.date, b.createdAt || b.date));
+      editorPays.sort((a, b) => safeSortDesc(a.createdAt || a.date, b.createdAt || b.date));
 
       onData({ clientPayments: clientPays, editorPayments: editorPays });
     },
@@ -151,9 +220,16 @@ export function subscribeExpenses(
     (snapshot) => {
       const items: Expense[] = [];
       snapshot.forEach((docSnap) => {
-        items.push({ ...(docSnap.data() as Expense), id: docSnap.id });
+        const raw = docSnap.data();
+        items.push({
+          ...(raw as Expense),
+          id: docSnap.id,
+          amount: Number(raw.amount) || 0,
+          date: safeDateString(raw.date),
+          createdAt: safeDateString(raw.createdAt) || new Date().toISOString(),
+        });
       });
-      items.sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
+      items.sort((a, b) => safeSortDesc(a.date || a.createdAt, b.date || b.createdAt));
       onData(items);
     },
     (err) => {
@@ -173,7 +249,17 @@ export function subscribeNotifications(
     (snapshot) => {
       const items: NotificationItem[] = [];
       snapshot.forEach((docSnap) => {
-        items.push({ ...(docSnap.data() as NotificationItem), id: docSnap.id });
+        const raw = docSnap.data();
+        let ts = Number(raw.timestamp) || 0;
+        if (!ts && raw.createdAt) {
+          ts = new Date(safeDateString(raw.createdAt)).getTime() || 0;
+        }
+        items.push({
+          ...(raw as NotificationItem),
+          id: docSnap.id,
+          timestamp: ts,
+          date: safeDateString(raw.date) || raw.date || '',
+        });
       });
       // Sort newest timestamp first
       items.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
@@ -196,7 +282,17 @@ export function subscribeActivities(
     (snapshot) => {
       const items: Activity[] = [];
       snapshot.forEach((docSnap) => {
-        items.push({ ...(docSnap.data() as Activity), id: docSnap.id });
+        const raw = docSnap.data();
+        let ts = Number(raw.timestamp) || 0;
+        if (!ts && raw.when) {
+          ts = new Date(safeDateString(raw.when)).getTime() || 0;
+        }
+        items.push({
+          ...(raw as Activity),
+          id: docSnap.id,
+          timestamp: ts,
+          when: safeDateString(raw.when) || String(raw.when || ''),
+        });
       });
       items.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       onData(items);
@@ -463,3 +559,118 @@ export async function saveSettingsDoc(settings: BusinessSettings): Promise<void>
     throw err;
   }
 }
+
+// ==========================================
+// CLIENT-EDITOR PROJECT CHAT SERVICE
+// ==========================================
+
+export function subscribeProjectChatMessages(
+  projectId: string,
+  onData: (messages: ChatMessage[]) => void,
+  onError?: (err: unknown) => void
+): Unsubscribe {
+  const colRef = collection(db, COLLECTIONS.CHAT_MESSAGES);
+  const q = query(colRef, where('projectId', '==', projectId));
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const items: ChatMessage[] = [];
+      snapshot.forEach((docSnap) => {
+        const raw = docSnap.data();
+        items.push({
+          ...(raw as ChatMessage),
+          id: docSnap.id,
+          createdAt: safeDateString(raw.createdAt) || new Date().toISOString(),
+        });
+      });
+      // Sort oldest to newest for natural chat reading flow
+      items.sort((a, b) => safeDateString(a.createdAt).localeCompare(safeDateString(b.createdAt)));
+      onData(items);
+    },
+    (err) => {
+      handleFirestoreError(err, OperationType.LIST, `${COLLECTIONS.CHAT_MESSAGES}?projectId=${projectId}`);
+      if (onError) onError(err);
+    }
+  );
+}
+
+export function subscribeAllChatMessages(
+  onData: (messages: ChatMessage[]) => void,
+  onError?: (err: unknown) => void
+): Unsubscribe {
+  const colRef = collection(db, COLLECTIONS.CHAT_MESSAGES);
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const items: ChatMessage[] = [];
+      snapshot.forEach((docSnap) => {
+        const raw = docSnap.data();
+        items.push({
+          ...(raw as ChatMessage),
+          id: docSnap.id,
+          createdAt: safeDateString(raw.createdAt) || new Date().toISOString(),
+        });
+      });
+      items.sort((a, b) => safeDateString(a.createdAt).localeCompare(safeDateString(b.createdAt)));
+      onData(items);
+    },
+    (err) => {
+      handleFirestoreError(err, OperationType.LIST, COLLECTIONS.CHAT_MESSAGES);
+      if (onError) onError(err);
+    }
+  );
+}
+
+export async function sendChatMessageDoc(msg: ChatMessage): Promise<void> {
+  try {
+    const docRef = doc(db, COLLECTIONS.CHAT_MESSAGES, msg.id);
+    await setDoc(docRef, {
+      ...msg,
+      createdAt: msg.createdAt || new Date().toISOString(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, `${COLLECTIONS.CHAT_MESSAGES}/${msg.id}`);
+    throw err;
+  }
+}
+
+export async function deleteChatMessageDoc(id: string): Promise<void> {
+  try {
+    const docRef = doc(db, COLLECTIONS.CHAT_MESSAGES, id);
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `${COLLECTIONS.CHAT_MESSAGES}/${id}`);
+    throw err;
+  }
+}
+
+/**
+ * Permanently deletes all chat messages associated with a specific project/work ID.
+ * Used upon successful Client approval or manual Admin chat clear.
+ */
+export async function clearProjectChatMessages(projectId: string): Promise<number> {
+  try {
+    const colRef = collection(db, COLLECTIONS.CHAT_MESSAGES);
+    const q = query(colRef, where('projectId', '==', projectId));
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+      return 0;
+    }
+
+    const batch = writeBatch(db);
+    let count = 0;
+    snapshot.forEach((docSnap) => {
+      batch.delete(docSnap.ref);
+      count++;
+    });
+
+    await batch.commit();
+    return count;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `${COLLECTIONS.CHAT_MESSAGES}?projectId=${projectId}`);
+    throw err;
+  }
+}
+

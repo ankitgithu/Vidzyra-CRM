@@ -161,19 +161,19 @@ export const WorkList: React.FC<WorkListProps> = ({
 
         <div className="bg-white p-4 rounded-xl border border-indigo-200 shadow-2xs bg-indigo-50/20">
           <span className="text-[10px] font-bold uppercase text-indigo-700">Deliverable Billing</span>
-          <div className="text-xl font-bold text-indigo-900 mt-1">₹{totalBilling.toLocaleString()}</div>
+          <div className="text-xl font-bold text-indigo-900 mt-1">₹{(totalBilling || 0).toLocaleString()}</div>
           <span className="text-[11px] text-indigo-600">Client billable total</span>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-purple-200 shadow-2xs bg-purple-50/20">
           <span className="text-[10px] font-bold uppercase text-purple-700">Editor Cost</span>
-          <div className="text-xl font-bold text-purple-900 mt-1">₹{totalCost.toLocaleString()}</div>
+          <div className="text-xl font-bold text-purple-900 mt-1">₹{(totalCost || 0).toLocaleString()}</div>
           <span className="text-[11px] text-purple-600">Payout commitment</span>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-2xs bg-emerald-50/20">
           <span className="text-[10px] font-bold uppercase text-emerald-700">Net Agency Profit</span>
-          <div className="text-xl font-bold text-emerald-700 mt-1">₹{totalProfit.toLocaleString()}</div>
+          <div className="text-xl font-bold text-emerald-700 mt-1">₹{(totalProfit || 0).toLocaleString()}</div>
           <span className="text-[11px] text-emerald-600">
             {totalBilling > 0 ? Math.round((totalProfit / totalBilling) * 100) : 0}% net margin
           </span>
@@ -473,7 +473,7 @@ export const WorkList: React.FC<WorkListProps> = ({
                 <p className="text-xs text-slate-500 truncate">
                   {selectedWorkProject.name}
                   {selectedWorkProject.workType ? ` • ${selectedWorkProject.workType}` : ''}
-                  {selectedWorkProject.totalBilling ? ` • ₹${selectedWorkProject.totalBilling.toLocaleString('en-IN')}` : ''}
+                  {selectedWorkProject.totalBilling ? ` • ₹${(selectedWorkProject.totalBilling || 0).toLocaleString('en-IN')}` : ''}
                 </p>
               </div>
             </div>

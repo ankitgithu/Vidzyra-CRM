@@ -91,7 +91,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const todayAssignedWork = projects.filter((p) => p.createdAt?.startsWith(todayStr) && p.assignedTo).length;
   const todayCompletedWork = projects.filter((p) => {
     const isCompleted = p.status === 'Completed' || p.status === 'Delivered';
-    const lastEvent = p.timeline[p.timeline.length - 1];
+    const timeline = p.timeline || [];
+    const lastEvent = timeline[timeline.length - 1];
     return isCompleted && lastEvent?.date === todayStr;
   }).length;
 
@@ -101,9 +102,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
       const stats = getClientStats(c.id);
       const clientProjects = projects.filter((p) => p.clientId === c.id);
       const editorCost = clientProjects.reduce((acc, p) => {
-        return acc + (p.assignedTo ? p.quantity * p.editorRate : 0);
+        return acc + (p.assignedTo ? (Number(p.quantity) || 1) * (Number(p.editorRate) || 0) : 0);
       }, 0);
-      const profit = stats.totalBilling - editorCost;
+      const profit = (Number(stats.totalBilling) || 0) - editorCost;
       return {
         ...c,
         totalBilling: stats.totalBilling,
@@ -252,7 +253,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               Total Revenue
             </p>
             <h3 className="text-2xl font-bold text-slate-900 mt-1">
-              ₹{financial.totalRevenue.toLocaleString()}
+              ₹{(financial?.totalRevenue || 0).toLocaleString()}
             </h3>
             <p className="text-[11px] text-slate-500 mt-2 font-medium">All client work billing</p>
           </div>
@@ -263,7 +264,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               Payments Received
             </p>
             <h3 className="text-2xl font-bold text-slate-900 mt-1">
-              ₹{financial.totalPaymentsReceived.toLocaleString()}
+              ₹{(financial?.totalPaymentsReceived || 0).toLocaleString()}
             </h3>
             <p className="text-[11px] text-emerald-600 mt-2 font-medium">↑ Collected in cash</p>
           </div>
@@ -274,7 +275,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               Pending Payments
             </p>
             <h3 className="text-2xl font-bold text-slate-900 mt-1">
-              ₹{financial.pendingPayments.toLocaleString()}
+              ₹{(financial?.pendingPayments || 0).toLocaleString()}
             </h3>
             <p className="text-[11px] text-amber-500 mt-2 font-medium">Uncollected balance</p>
           </div>
@@ -285,7 +286,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               Editor Cost
             </p>
             <h3 className="text-2xl font-bold text-slate-900 mt-1">
-              ₹{financial.totalEditorCost.toLocaleString()}
+              ₹{(financial?.totalEditorCost || 0).toLocaleString()}
             </h3>
             <p className="text-[11px] text-slate-500 mt-2 font-medium">Editor rate commitments</p>
           </div>
@@ -296,7 +297,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               Expenses
             </p>
             <h3 className="text-2xl font-bold text-slate-900 mt-1">
-              ₹{financial.otherExpenses.toLocaleString()}
+              ₹{(financial?.otherExpenses || 0).toLocaleString()}
             </h3>
             <p className="text-[11px] text-slate-500 mt-2 font-medium">Tools, music &amp; assets</p>
           </div>
@@ -307,7 +308,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               Gross Profit
             </p>
             <h3 className="text-2xl font-bold text-slate-900 mt-1">
-              ₹{financial.grossProfit.toLocaleString()}
+              ₹{(financial?.grossProfit || 0).toLocaleString()}
             </h3>
             <p className="text-[11px] text-emerald-600 mt-2 font-medium">Revenue - Editor cost</p>
           </div>
@@ -318,7 +319,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               Net Profit
             </p>
             <h3 className="text-2xl font-bold text-white mt-1">
-              ₹{financial.netProfit.toLocaleString()}
+              ₹{(financial?.netProfit || 0).toLocaleString()}
             </h3>
             <p className="text-[11px] text-slate-400 mt-2 font-medium">Realized net margin</p>
           </div>
@@ -369,15 +370,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="grid grid-cols-3 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-100 text-xs">
             <div>
               <span className="text-slate-400 text-[10px] uppercase font-medium">Total Billing</span>
-              <p className="font-bold text-slate-800 text-sm mt-0.5">₹{financial.totalRevenue.toLocaleString()}</p>
+              <p className="font-bold text-slate-800 text-sm mt-0.5">₹{(financial?.totalRevenue || 0).toLocaleString()}</p>
             </div>
             <div>
               <span className="text-slate-400 text-[10px] uppercase font-medium">Payment Received</span>
-              <p className="font-bold text-emerald-600 text-sm mt-0.5">₹{financial.totalPaymentsReceived.toLocaleString()}</p>
+              <p className="font-bold text-emerald-600 text-sm mt-0.5">₹{(financial?.totalPaymentsReceived || 0).toLocaleString()}</p>
             </div>
             <div>
               <span className="text-slate-400 text-[10px] uppercase font-medium">Remaining Payment</span>
-              <p className="font-bold text-rose-600 text-sm mt-0.5">₹{financial.pendingPayments.toLocaleString()}</p>
+              <p className="font-bold text-rose-600 text-sm mt-0.5">₹{(financial?.pendingPayments || 0).toLocaleString()}</p>
             </div>
           </div>
         </div>
@@ -478,7 +479,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                     <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1.5">
                       <span>{w.workType}</span>
-                      <span className="text-indigo-600 font-semibold">₹{w.totalBilling.toLocaleString()}</span>
+                      <span className="text-indigo-600 font-semibold">
+                        ₹{(w.totalBilling ?? ((Number(w.quantity) || 1) * (Number(w.clientRate) || 0)) ?? 0).toLocaleString()}
+                      </span>
                     </div>
                   </div>
                 ))
@@ -523,7 +526,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                     <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1.5">
                       <span>{w.workType}</span>
-                      <span className="text-cyan-600 font-semibold">₹{w.totalBilling.toLocaleString()}</span>
+                      <span className="text-cyan-600 font-semibold">
+                        ₹{(w.totalBilling ?? ((Number(w.quantity) || 1) * (Number(w.clientRate) || 0)) ?? 0).toLocaleString()}
+                      </span>
                     </div>
                   </div>
                 ))
@@ -568,7 +573,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                     <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1.5">
                       <span>Due: {w.dueDate}</span>
-                      <span className="text-slate-700 font-semibold">₹{w.totalBilling.toLocaleString()}</span>
+                      <span className="text-slate-700 font-semibold">
+                        ₹{(w.totalBilling ?? ((Number(w.quantity) || 1) * (Number(w.clientRate) || 0)) ?? 0).toLocaleString()}
+                      </span>
                     </div>
                   </div>
                 ))
@@ -755,9 +762,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <span>
               Peak Value:{' '}
               <strong className="text-slate-900">
-                {chartMetric === 'revenue' && `₹${financial.totalRevenue.toLocaleString()}`}
-                {chartMetric === 'payments' && `₹${financial.totalPaymentsReceived.toLocaleString()}`}
-                {chartMetric === 'profit' && `₹${financial.netProfit.toLocaleString()}`}
+                {chartMetric === 'revenue' && `₹${(financial?.totalRevenue || 0).toLocaleString()}`}
+                {chartMetric === 'payments' && `₹${(financial?.totalPaymentsReceived || 0).toLocaleString()}`}
+                {chartMetric === 'profit' && `₹${(financial?.netProfit || 0).toLocaleString()}`}
                 {chartMetric === 'completion' && `${completedWork} Finished Projects`}
               </strong>
             </span>
@@ -797,7 +804,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="text-right">
                 <span className="text-xs text-slate-400 block">Total Paid</span>
                 <span className="text-base font-bold text-emerald-600">
-                  ₹{highestPayingClient?.totalPaid.toLocaleString() || 0}
+                  ₹{(highestPayingClient?.totalPaid || 0).toLocaleString()}
                 </span>
               </div>
             </div>
@@ -816,7 +823,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="text-right">
                 <span className="text-xs text-slate-400 block">Total Billing</span>
                 <span className="text-base font-bold text-indigo-600">
-                  ₹{highestRevenueClient?.totalBilling.toLocaleString() || 0}
+                  ₹{(highestRevenueClient?.totalBilling || 0).toLocaleString()}
                 </span>
               </div>
             </div>
@@ -835,7 +842,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="text-right">
                 <span className="text-xs text-slate-400 block">Profit Contribution</span>
                 <span className="text-base font-bold text-purple-600">
-                  ₹{highestProfitClient?.profit.toLocaleString() || 0}
+                  ₹{(highestProfitClient?.profit || 0).toLocaleString()}
                 </span>
               </div>
             </div>

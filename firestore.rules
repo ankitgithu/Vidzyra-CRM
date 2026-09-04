@@ -79,6 +79,13 @@ service cloud.firestore {
       allow list: if true;
       allow write: if isValidId(linkId);
     }
+
+    // Client-Editor Project Chat Messages
+    match /chatMessages/{messageId} {
+      allow get: if isValidId(messageId);
+      allow list: if true;
+      allow write: if isValidId(messageId);
+    }
   }
 }
 

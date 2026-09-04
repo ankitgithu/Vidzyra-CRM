@@ -20,6 +20,7 @@ import { ProjectStatus } from '../../types';
 import { ReceiptData } from '../../utils/receiptGenerator';
 import { PaymentReceiptModal } from '../payments/PaymentReceiptModal';
 import { NotificationDrawer } from '../notifications/NotificationDrawer';
+import { ProjectChatModal } from '../chat/ProjectChatModal';
 
 interface ClientPortalViewProps {
   clientId: string;
@@ -54,6 +55,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptData | null>(null);
+  const [chatProjectId, setChatProjectId] = useState<string | null>(null);
 
   const clientNotifications = useMemo(
     () =>
@@ -120,11 +122,11 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   const clientProjects = projects.filter((p) => p.clientId === client.id);
   const payments = clientPayments.filter((p) => p.clientId === client.id);
 
-  const handleApprove = (workId: string) => {
+  const handleApprove = async (workId: string) => {
     if (approvingId) return;
     setApprovingId(workId);
     try {
-      approveWork(workId, client.name);
+      await approveWork(workId, client.name);
       setToastMessage('Deliverable approved successfully. Admin and assigned Editor have been notified.');
       setTimeout(() => setToastMessage(null), 4500);
     } finally {
@@ -402,6 +404,40 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                       <span className="text-[11px] text-slate-400 italic px-2">Render in progress</span>
                     )}
 
+                    {/* Client–Editor Project Chat Button */}
+                    {p.assignedTo && p.workDoneBy !== 'Self' ? (
+                      <button
+                        id={`btn-client-chat-${p.id}`}
+                        onClick={() => setChatProjectId(p.id)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                          p.status === 'Approved' || p.reviewStatus === 'Approved'
+                            ? 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                            : p.chatDisabled
+                            ? 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+                            : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 shadow-2xs'
+                        }`}
+                        title={
+                          p.status === 'Approved' || p.reviewStatus === 'Approved'
+                            ? 'Chat closed (project approved)'
+                            : p.chatDisabled
+                            ? 'Chat disabled by administrator'
+                            : 'Chat with your assigned video editor'
+                        }
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        {p.status === 'Approved' || p.reviewStatus === 'Approved' ? 'Chat (Closed)' : 'Chat with Editor'}
+                      </button>
+                    ) : (
+                      <button
+                        disabled
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-400 rounded-lg text-xs font-medium cursor-not-allowed opacity-75"
+                        title="Chat will become available once an editor is assigned to this deliverable"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        Chat (Pending Editor)
+                      </button>
+                    )}
+
                     {/* Review Controls */}
                     {p.status === 'Approved' || p.reviewStatus === 'Approved' ? (
                       <span
@@ -642,6 +678,18 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
         onClose={() => setSelectedReceipt(null)}
         receiptData={selectedReceipt}
       />
+
+      {/* Client–Editor Project Chat Modal */}
+      {chatProjectId && (
+        <ProjectChatModal
+          isOpen={Boolean(chatProjectId)}
+          onClose={() => setChatProjectId(null)}
+          projectId={chatProjectId}
+          currentRole="client"
+          currentUserId={client.id}
+          currentUserName={client.name}
+        />
+      )}
     </div>
   );
 };

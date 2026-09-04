@@ -200,6 +200,25 @@
         "expiresAt": { "type": "string", "maxLength": 100 }
       },
       "required": ["id", "token", "type"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Text-only project communication message between client and assigned editor",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "projectId": { "type": "string", "maxLength": 128 },
+        "workId": { "type": "string", "maxLength": 128 },
+        "clientId": { "type": "string", "maxLength": 128 },
+        "editorId": { "type": "string", "maxLength": 128 },
+        "senderId": { "type": "string", "maxLength": 128 },
+        "senderRole": { "type": "string", "maxLength": 50 },
+        "senderName": { "type": "string", "maxLength": 200 },
+        "message": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "projectId", "clientId", "editorId", "senderId", "message"]
     }
   },
   "firestore": {
@@ -242,6 +261,10 @@
     "/sharedLinks/{linkId}": {
       "schema": { "$ref": "#/entities/SharedLink" },
       "description": "Collection of shared portal authorization tokens"
+    },
+    "/chatMessages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Collection of project chat messages between clients and assigned editors"
     }
   }
 }

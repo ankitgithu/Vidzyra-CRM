@@ -10,6 +10,7 @@ import {
   Settings,
   ExternalLink,
   Sparkles,
+  MessageSquare,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
 
@@ -21,6 +22,7 @@ export const Sidebar: React.FC = () => {
     { id: 'clients', label: 'Clients', icon: Users },
     { id: 'editors', label: 'Editors', icon: Film },
     { id: 'work', label: 'Work / Projects', icon: Briefcase },
+    { id: 'chats', label: 'Project Chats', icon: MessageSquare },
     { id: 'payments', label: 'Payments', icon: CreditCard },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
     { id: 'datacenter', label: 'Data Center', icon: Database },

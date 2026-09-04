@@ -512,7 +512,7 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
           </div>
           <div className="mt-2">
             <div className="text-lg font-bold text-slate-900 tracking-tight">
-              ₹{financialMetrics.totalClientBilling.toLocaleString('en-IN')}
+              ₹{(financialMetrics.totalClientBilling || 0).toLocaleString('en-IN')}
             </div>
             <span className="text-[10px] text-slate-500 block mt-0.5 truncate">
               Invoiced client work
@@ -530,7 +530,7 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
           </div>
           <div className="mt-2">
             <div className="text-lg font-bold text-emerald-700 tracking-tight">
-              ₹{financialMetrics.totalClientPaid.toLocaleString('en-IN')}
+              ₹{(financialMetrics.totalClientPaid || 0).toLocaleString('en-IN')}
             </div>
             <span className="text-[10px] text-emerald-600 block mt-0.5 truncate">
               {clientPayments.length} receipts collected
@@ -548,7 +548,7 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
           </div>
           <div className="mt-2">
             <div className="text-lg font-bold text-amber-700 tracking-tight">
-              ₹{financialMetrics.clientPendingPayments.toLocaleString('en-IN')}
+              ₹{(financialMetrics.clientPendingPayments || 0).toLocaleString('en-IN')}
             </div>
             <span className="text-[10px] text-amber-600 block mt-0.5 truncate">
               Due receivables
@@ -566,7 +566,7 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
           </div>
           <div className="mt-2">
             <div className="text-lg font-bold text-slate-900 tracking-tight">
-              ₹{financialMetrics.totalEditorCost.toLocaleString('en-IN')}
+              ₹{(financialMetrics.totalEditorCost || 0).toLocaleString('en-IN')}
             </div>
             <span className="text-[10px] text-slate-500 block mt-0.5 truncate">
               Assigned project liability
@@ -584,7 +584,7 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
           </div>
           <div className="mt-2">
             <div className="text-lg font-bold text-purple-700 tracking-tight">
-              ₹{financialMetrics.totalEditorPaid.toLocaleString('en-IN')}
+              ₹{(financialMetrics.totalEditorPaid || 0).toLocaleString('en-IN')}
             </div>
             <span className="text-[10px] text-purple-600 block mt-0.5 truncate">
               {editorPayments.length} payouts completed
@@ -602,7 +602,7 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
           </div>
           <div className="mt-2">
             <div className="text-lg font-bold text-orange-700 tracking-tight">
-              ₹{financialMetrics.editorPendingPayments.toLocaleString('en-IN')}
+              ₹{(financialMetrics.editorPendingPayments || 0).toLocaleString('en-IN')}
             </div>
             <span className="text-[10px] text-orange-600 block mt-0.5 truncate">
               Outstanding to editors
@@ -620,10 +620,10 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
           </div>
           <div className="mt-2">
             <div className="text-lg font-bold text-indigo-900 tracking-tight">
-              ₹{financialMetrics.netProfit.toLocaleString('en-IN')}
+              ₹{(financialMetrics.netProfit || 0).toLocaleString('en-IN')}
             </div>
             <span className="text-[10px] text-indigo-600 block mt-0.5 truncate font-semibold">
-              Cash: ₹{financialMetrics.realizedProfit.toLocaleString('en-IN')}
+              Cash: ₹{(financialMetrics.realizedProfit || 0).toLocaleString('en-IN')}
             </span>
           </div>
         </div>
@@ -869,7 +869,7 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
                         {row.projectName}
                       </td>
                       <td className="px-3 py-3.5 text-right font-bold text-emerald-600 whitespace-nowrap">
-                        ₹{row.amount.toLocaleString('en-IN')}
+                        ₹{(row.amount || 0).toLocaleString('en-IN')}
                       </td>
                       <td className="px-3 py-3.5 whitespace-nowrap">
                         <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -1013,7 +1013,7 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
                         {row.projectName}
                       </td>
                       <td className="px-3 py-3.5 text-right font-bold text-purple-700 whitespace-nowrap">
-                        ₹{row.amount.toLocaleString('en-IN')}
+                        ₹{(row.amount || 0).toLocaleString('en-IN')}
                       </td>
                       <td className="px-3 py-3.5 whitespace-nowrap">
                         <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
@@ -1147,7 +1147,7 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
                         </td>
                         <td className="px-3 py-3.5 text-slate-600">{exp.paymentMethod || 'Bank / UPI'}</td>
                         <td className="px-3 py-3.5 text-right font-bold text-rose-700 whitespace-nowrap">
-                          ₹{exp.amount.toLocaleString('en-IN')}
+                          ₹{(exp.amount || 0).toLocaleString('en-IN')}
                         </td>
                         <td className="px-4 py-3.5 text-slate-500 italic max-w-xs truncate">
                           {exp.notes || '—'}
@@ -1242,7 +1242,7 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
               <div>
                 <h3 className="text-base font-bold text-slate-900">Delete Payment?</h3>
                 <p className="text-xs text-slate-500">
-                  {paymentToDelete.category} Payment • ₹{paymentToDelete.amount.toLocaleString('en-IN')}
+                  {paymentToDelete.category} Payment • ₹{(paymentToDelete.amount || 0).toLocaleString('en-IN')}
                   {paymentToDelete.receiptNumber ? ` • ${paymentToDelete.receiptNumber}` : ''}
                 </p>
               </div>
@@ -1288,7 +1288,7 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
               <div>
                 <h3 className="text-base font-bold text-slate-900">Delete Expense?</h3>
                 <p className="text-xs text-slate-500">
-                  {expenseToDelete.category} • ₹{expenseToDelete.amount.toLocaleString('en-IN')}
+                  {expenseToDelete.category} • ₹{(expenseToDelete.amount || 0).toLocaleString('en-IN')}
                   {expenseToDelete.name || expenseToDelete.title ? ` • ${expenseToDelete.name || expenseToDelete.title}` : ''}
                 </p>
               </div>

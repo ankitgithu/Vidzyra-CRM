@@ -136,6 +136,27 @@ export interface WorkProject {
 
   // Timeline
   timeline: TimelineEvent[];
+
+  // Client-Editor Project Chat
+  chatDisabled?: boolean;
+  chatDisabledAt?: string;
+  chatClosedReason?: string;
+}
+
+export type ChatSenderRole = 'client' | 'editor' | 'admin';
+
+export interface ChatMessage {
+  id: string;
+  projectId: string;
+  workId: string;
+  clientId: string;
+  editorId: string;
+  senderId: string;
+  senderRole: ChatSenderRole;
+  senderName: string;
+  message: string;
+  createdAt: string;
+  status?: string;
 }
 
 export interface Client {

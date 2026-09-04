@@ -22,6 +22,7 @@ import { ProjectStatus } from '../../types';
 import { ReceiptData } from '../../utils/receiptGenerator';
 import { PaymentReceiptModal } from '../payments/PaymentReceiptModal';
 import { NotificationDrawer } from '../notifications/NotificationDrawer';
+import { ProjectChatModal } from '../chat/ProjectChatModal';
 
 interface EditorPortalViewProps {
   editorId: string;
@@ -51,6 +52,7 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
   const [submittingWorkId, setSubmittingWorkId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [chatProjectId, setChatProjectId] = useState<string | null>(null);
 
   const editorNotifications = useMemo(
     () =>
@@ -364,6 +366,29 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
                       <span className="text-[11px] text-slate-400 italic px-2">Upload link pending</span>
                     )}
 
+                    {/* Client–Editor Project Chat Button */}
+                    <button
+                      id={`btn-editor-chat-${p.id}`}
+                      onClick={() => setChatProjectId(p.id)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                        p.status === 'Approved' || p.reviewStatus === 'Approved'
+                          ? 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                          : p.chatDisabled
+                          ? 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+                          : 'bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 shadow-2xs'
+                      }`}
+                      title={
+                        p.status === 'Approved' || p.reviewStatus === 'Approved'
+                          ? 'Chat closed (project approved)'
+                          : p.chatDisabled
+                          ? 'Chat disabled by administrator'
+                          : 'Chat with client regarding video deliverables'
+                      }
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      {p.status === 'Approved' || p.reviewStatus === 'Approved' ? 'Chat (Closed)' : 'Chat with Client'}
+                    </button>
+
                     {/* Status Workflow for Editor */}
                     {p.status === 'Approved' || p.reviewStatus === 'Approved' ? (
                       <span
@@ -517,6 +542,18 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
         onClose={() => setSelectedReceipt(null)}
         receiptData={selectedReceipt}
       />
+
+      {/* Client–Editor Project Chat Modal */}
+      {chatProjectId && (
+        <ProjectChatModal
+          isOpen={Boolean(chatProjectId)}
+          onClose={() => setChatProjectId(null)}
+          projectId={chatProjectId}
+          currentRole="editor"
+          currentUserId={editor.id}
+          currentUserName={editor.name}
+        />
+      )}
     </div>
   );
 };

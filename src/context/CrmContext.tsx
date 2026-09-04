@@ -13,9 +13,12 @@ import {
   PortalStatus,
   RevisionStatus,
   TimelineEvent,
+  ChatMessage,
+  ChatSenderRole,
 } from '../types';
 import { initialSettings } from '../mockData';
 import * as firestoreService from '../services/firestoreService';
+import { validateChatMessage } from '../utils/chatFilter';
 
 export interface CrmContextType {
   clients: Client[];
@@ -109,10 +112,22 @@ export interface CrmContextType {
 
   // Review & Portal Completion Actions
   submitEditorCompletion: (workId: string, editorId: string, editorName?: string) => boolean;
-  approveWork: (workId: string, clientName?: string) => boolean;
+  approveWork: (workId: string, clientName?: string) => Promise<boolean> | boolean;
   submitClientRevision: (params: { workId: string; notes: string; timecode?: string; clientName?: string }) => boolean;
   submitClientDataUpload: (params: { workId: string; clientName?: string; notes?: string }) => boolean;
   updateProjectReview: (workId: string, reviewStatus: string, notes?: string, clientName?: string) => void;
+
+  // Client-Editor Project Chat
+  sendProjectChatMessage: (params: {
+    projectId: string;
+    senderId: string;
+    senderRole: ChatSenderRole;
+    senderName: string;
+    message: string;
+  }) => Promise<{ success: boolean; error?: string; messageId?: string }>;
+  deleteChatMessage: (messageId: string) => Promise<void>;
+  clearProjectChat: (projectId: string) => Promise<number>;
+  toggleProjectChatDisabled: (projectId: string, disabled: boolean) => Promise<void>;
 
   // Payments
   addClientPayment: (paymentData: Omit<ClientPayment, 'id' | 'receiptNumber' | 'createdAt'>) => ClientPayment;
@@ -198,7 +213,7 @@ export interface CrmContextType {
   resetToDemoData: () => void;
 }
 
-const CrmContext = createContext<CrmContextType | undefined>(undefined);
+export const CrmContext = createContext<CrmContextType | undefined>(undefined);
 
 export const ROUTE_TO_TAB: Record<string, string> = {
   '/': 'dashboard',
@@ -1229,7 +1244,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // 2. Client approves a project -> Notify Admin, Assigned Editor
-  const approveWork = (workId: string, clientName?: string): boolean => {
+  const approveWork = async (workId: string, clientName?: string): Promise<boolean> => {
     const project = projects.find((p) => p.id === workId);
     if (!project) return false;
     if (project.status === 'Approved' || project.reviewStatus === 'Approved') return true;
@@ -1254,10 +1269,30 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       approvedAt: formatted,
       approvedBy: resolvedClientName,
       timeline: [...project.timeline, newTimelineItem],
+      chatDisabled: true,
+      chatDisabledAt: formatted,
+      chatClosedReason: 'Project approved by client',
     };
 
-    updateProject(workId, updates);
+    // Step 1: Save project status = APPROVED to Firestore
+    try {
+      await firestoreService.updateProjectDoc(workId, updates);
+    } catch (err) {
+      console.error('Failed to update project approval in Firestore:', err);
+      return false;
+    }
 
+    // Step 2: Update local state immediately after confirmed write
+    setProjects((prev) => prev.map((p) => (p.id === workId ? { ...p, ...updates } : p)));
+
+    // Step 3: Delete chat messages for that project from Firestore
+    try {
+      await firestoreService.clearProjectChatMessages(workId);
+    } catch (err) {
+      console.error('Failed to clear project chat messages upon approval:', err);
+    }
+
+    // Step 4: Create audit activity
     addActivity({
       who: resolvedClientName,
       action: 'Work approved',
@@ -1268,7 +1303,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       editorId: project.assignedTo || undefined,
     });
 
-    // Notify: Admin and Assigned Editor
+    // Step 5: Notify: Admin and Assigned Editor
     const notifs: (Omit<NotificationItem, 'id' | 'date' | 'time' | 'timestamp' | 'read'> & { id?: string })[] = [
       {
         id: `notif-${Date.now()}-adm`,
@@ -1299,6 +1334,137 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     addNotifications(notifs);
     return true;
+  };
+
+  // ==========================================
+  // CLIENT-EDITOR PROJECT CHAT ACTIONS
+  // ==========================================
+  const sendProjectChatMessage = async (params: {
+    projectId: string;
+    senderId: string;
+    senderRole: ChatSenderRole;
+    senderName: string;
+    message: string;
+  }): Promise<{ success: boolean; error?: string; messageId?: string }> => {
+    const { projectId, senderId, senderRole, senderName, message } = params;
+
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) {
+      return { success: false, error: 'Project not found.' };
+    }
+
+    if (project.status === 'Approved' || project.reviewStatus === 'Approved') {
+      return { success: false, error: 'Chat closed — this project has been approved.' };
+    }
+
+    if (project.chatDisabled) {
+      return { success: false, error: 'Chat is currently disabled for this project.' };
+    }
+
+    if (!project.assignedTo || project.workDoneBy === 'Self') {
+      return { success: false, error: 'Chat is only available when an editor is assigned.' };
+    }
+
+    // Moderate content before sending
+    const validation = validateChatMessage(message);
+    if (!validation.allowed) {
+      return { success: false, error: validation.reason };
+    }
+
+    const messageId = `msg-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newMsg: ChatMessage = {
+      id: messageId,
+      projectId,
+      workId: projectId,
+      clientId: project.clientId,
+      editorId: project.assignedTo,
+      senderId,
+      senderRole,
+      senderName,
+      message: message.trim(),
+      createdAt: new Date().toISOString(),
+      status: 'sent',
+    };
+
+    try {
+      await firestoreService.sendChatMessageDoc(newMsg);
+
+      // Real-time recipient notification
+      if (senderRole === 'client' && project.assignedTo) {
+        addNotification({
+          type: 'work',
+          message: `New message from ${senderName} on "${project.name}"`,
+          relatedWorkId: projectId,
+          relatedClientId: project.clientId,
+          relatedEditorId: project.assignedTo,
+          recipientId: project.assignedTo,
+          recipientRole: 'editor',
+          targetRole: 'editor',
+        });
+      } else if (senderRole === 'editor') {
+        addNotification({
+          type: 'work',
+          message: `New message from ${senderName} on "${project.name}"`,
+          relatedWorkId: projectId,
+          relatedClientId: project.clientId,
+          relatedEditorId: project.assignedTo || undefined,
+          recipientId: project.clientId,
+          recipientRole: 'client',
+          targetRole: 'client',
+        });
+      }
+
+      return { success: true, messageId };
+    } catch (err: any) {
+      console.error('Failed to send chat message:', err);
+      return { success: false, error: err?.message || 'Failed to send message.' };
+    }
+  };
+
+  const deleteChatMessage = async (messageId: string): Promise<void> => {
+    try {
+      await firestoreService.deleteChatMessageDoc(messageId);
+    } catch (err) {
+      console.error('Failed to delete chat message:', err);
+      throw err;
+    }
+  };
+
+  const clearProjectChat = async (projectId: string): Promise<number> => {
+    try {
+      const deletedCount = await firestoreService.clearProjectChatMessages(projectId);
+      const pr = projects.find((p) => p.id === projectId);
+      addActivity({
+        who: 'Admin',
+        action: 'Chat cleared',
+        what: `Cleared chat history (${deletedCount} messages) for project "${pr?.name || projectId}"`,
+        entityType: 'work',
+        entityId: projectId,
+      });
+      return deletedCount;
+    } catch (err) {
+      console.error('Failed to clear project chat:', err);
+      throw err;
+    }
+  };
+
+  const toggleProjectChatDisabled = async (projectId: string, disabled: boolean): Promise<void> => {
+    const { formatted } = getFormattedDateTime();
+    const updates: Partial<WorkProject> = {
+      chatDisabled: disabled,
+      chatDisabledAt: disabled ? formatted : undefined,
+      chatClosedReason: disabled ? 'Disabled by administrator' : undefined,
+    };
+    updateProject(projectId, updates);
+
+    const pr = projects.find((p) => p.id === projectId);
+    addActivity({
+      who: 'Admin',
+      action: disabled ? 'Chat disabled' : 'Chat enabled',
+      what: `${disabled ? 'Disabled' : 'Enabled'} client-editor chat for "${pr?.name || projectId}"`,
+      entityType: 'work',
+      entityId: projectId,
+    });
   };
 
   // 3. Client requests revision -> Notify Admin, Assigned Editor
@@ -1516,7 +1682,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addActivity({
       who: 'Admin',
       action: 'Payment received',
-      what: `Received ₹${paymentData.amount.toLocaleString()} from ${client?.name || 'Client'} (${paymentData.paymentType}, Receipt: ${receiptNumber})`,
+      what: `Received ₹${(paymentData.amount || 0).toLocaleString()} from ${client?.name || 'Client'} (${paymentData.paymentType}, Receipt: ${receiptNumber})`,
       entityType: 'payment',
       entityId: id,
       clientId: paymentData.clientId,
@@ -1524,7 +1690,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     addNotification({
       type: 'payment',
-      message: `Client payment of ₹${paymentData.amount.toLocaleString()} received from ${client?.name || 'Client'}`,
+      message: `Client payment of ₹${(paymentData.amount || 0).toLocaleString()} received from ${client?.name || 'Client'}`,
       relatedClientId: paymentData.clientId,
       relatedPaymentId: id,
     });
@@ -1576,7 +1742,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addActivity({
       who: 'Admin',
       action: 'Payment deleted',
-      what: `Deleted client payment slip ${payment.receiptNumber} (₹${payment.amount.toLocaleString()})`,
+      what: `Deleted client payment slip ${payment.receiptNumber} (₹${(payment.amount || 0).toLocaleString()})`,
       entityType: 'payment',
       entityId: id,
       clientId: payment.clientId,
@@ -1606,7 +1772,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addActivity({
       who: 'Admin',
       action: 'Editor payment added',
-      what: `Paid ₹${paymentData.amount.toLocaleString()} to editor ${editor?.name || 'Editor'} (${paymentData.paymentType}, Receipt: ${receiptNumber})`,
+      what: `Paid ₹${(paymentData.amount || 0).toLocaleString()} to editor ${editor?.name || 'Editor'} (${paymentData.paymentType}, Receipt: ${receiptNumber})`,
       entityType: 'payment',
       entityId: id,
       editorId: paymentData.editorId,
@@ -1614,7 +1780,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     addNotification({
       type: 'payment',
-      message: `Editor payout of ₹${paymentData.amount.toLocaleString()} recorded for ${editor?.name || 'Editor'}`,
+      message: `Editor payout of ₹${(paymentData.amount || 0).toLocaleString()} recorded for ${editor?.name || 'Editor'}`,
       relatedEditorId: paymentData.editorId,
       relatedPaymentId: id,
     });
@@ -1666,7 +1832,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addActivity({
       who: 'Admin',
       action: 'Payment deleted',
-      what: `Deleted editor payment record ${payment.receiptNumber} (₹${payment.amount.toLocaleString()})`,
+      what: `Deleted editor payment record ${payment.receiptNumber} (₹${(payment.amount || 0).toLocaleString()})`,
       entityType: 'payment',
       entityId: id,
       editorId: payment.editorId,
@@ -1692,7 +1858,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addActivity({
       who: 'Admin',
       action: 'Expense recorded',
-      what: `Recorded expense "${expenseData.name || expenseData.title}" of ₹${expenseData.amount.toLocaleString()} (${expenseData.category})`,
+      what: `Recorded expense "${expenseData.name || expenseData.title}" of ₹${(expenseData.amount || 0).toLocaleString()} (${expenseData.category})`,
       entityType: 'expense',
       entityId: id,
     });
@@ -1713,7 +1879,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addActivity({
       who: 'Admin',
       action: 'Expense deleted',
-      what: `Deleted expense "${expenseTitle}" (₹${expense.amount.toLocaleString('en-IN')})`,
+      what: `Deleted expense "${expenseTitle}" (₹${(expense.amount || 0).toLocaleString('en-IN')})`,
       entityType: 'expense',
       entityId: id,
     });
@@ -1990,6 +2156,10 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         submitClientRevision,
         submitClientDataUpload,
         updateProjectReview,
+        sendProjectChatMessage,
+        deleteChatMessage,
+        clearProjectChat,
+        toggleProjectChatDisabled,
         addClientPayment,
         updateClientPayment,
         deleteClientPayment,
