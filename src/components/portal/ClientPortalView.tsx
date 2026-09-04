@@ -39,6 +39,7 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
     getClientStats,
     approveWork,
     submitClientRevision,
+    submitClientDataUpload,
     notifications,
     settings,
   } = useCrm();
@@ -55,7 +56,13 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptData | null>(null);
 
   const clientNotifications = useMemo(
-    () => notifications.filter((n) => n.relatedClientId === clientId && n.targetRole !== 'editor'),
+    () =>
+      notifications.filter((n) => {
+        if (n.recipientId === clientId) return true;
+        if (n.targetRole === 'client' && n.relatedClientId === clientId) return true;
+        if (n.recipientRole === 'client' && n.relatedClientId === clientId) return true;
+        return false;
+      }),
     [notifications, clientId]
   );
   const unreadClientNotifs = clientNotifications.filter((n) => !n.read).length;
@@ -364,6 +371,11 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                         href={p.userDownloadLink}
                         target="_blank"
                         rel="noreferrer"
+                        onClick={() => {
+                          submitClientDataUpload({ workId: p.id, clientName: client.name });
+                          setToastMessage('Raw data upload notification sent to your editor and admin.');
+                          setTimeout(() => setToastMessage(null), 4000);
+                        }}
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-semibold transition"
                         title="Upload your raw footage and assets here"
                       >

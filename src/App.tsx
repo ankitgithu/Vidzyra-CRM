@@ -38,6 +38,7 @@ const MainApp: React.FC = () => {
     editors,
     selectedWorkId,
     setSelectedWorkId,
+    isLoading,
   } = useCrm();
 
   // Modals state
@@ -71,6 +72,20 @@ const MainApp: React.FC = () => {
     type: 'client' | 'editor';
     id: string;
   } | null>(null);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-center">
+        <div className="bg-slate-800/90 border border-slate-700/70 p-8 rounded-2xl max-w-sm w-full shadow-2xl space-y-4">
+          <div className="w-10 h-10 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <div className="space-y-1">
+            <h2 className="text-base font-bold text-white tracking-tight">Vidzyra CRM</h2>
+            <p className="text-xs text-slate-400">Connecting to cloud database...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // 1. Standalone Shared Portal Route (isolated from Admin CRM)
   const sharedPortal = getSharedPortalSession();

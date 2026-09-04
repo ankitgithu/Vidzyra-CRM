@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Client,
   Editor,
@@ -12,23 +12,12 @@ import {
   WorkStatus,
   PortalStatus,
   RevisionStatus,
-  PaymentMethod,
-  PaymentType,
   TimelineEvent,
 } from '../types';
-import {
-  initialClients,
-  initialEditors,
-  initialProjects,
-  initialClientPayments,
-  initialEditorPayments,
-  initialExpenses,
-  initialActivities,
-  initialNotifications,
-  initialSettings,
-} from '../mockData';
+import { initialSettings } from '../mockData';
+import * as firestoreService from '../services/firestoreService';
 
-interface CrmContextType {
+export interface CrmContextType {
   clients: Client[];
   editors: Editor[];
   projects: WorkProject[];
@@ -39,15 +28,21 @@ interface CrmContextType {
   notifications: NotificationItem[];
   settings: BusinessSettings;
 
-  // Active view & navigation
+  // Real-time Database state
+  isLoading: boolean;
+  firestoreError: string | null;
+
+  // Active view, search & navigation
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
   selectedClientId: string | null;
   setSelectedClientId: (id: string | null) => void;
   selectedEditorId: string | null;
   setSelectedEditorId: (id: string | null) => void;
   selectedWorkId: string | null;
-  setSelectedWorkId: (id: string | null) => void;
+  setSelectedWorkId: (id: string | null, updateHistory?: boolean) => void;
 
   // Portal simulation / preview
   activePortalUser: { type: 'admin' | 'client' | 'editor'; id: string } | null;
@@ -66,7 +61,20 @@ interface CrmContextType {
   setEditorPortalStatus: (id: string, status: PortalStatus) => void;
 
   // Work / Project CRUD
-  addProject: (projectData: Omit<WorkProject, 'id' | 'createdAt' | 'timeline' | 'revisionCount' | 'revisionStatus' | 'editorDownloadConfirmed' | 'editorUploadConfirmed' | 'clientUploadConfirmed' | 'clientDownloadConfirmed'>) => WorkProject;
+  addProject: (
+    projectData: Omit<
+      WorkProject,
+      | 'id'
+      | 'createdAt'
+      | 'timeline'
+      | 'revisionCount'
+      | 'revisionStatus'
+      | 'editorDownloadConfirmed'
+      | 'editorUploadConfirmed'
+      | 'clientUploadConfirmed'
+      | 'clientDownloadConfirmed'
+    >
+  ) => WorkProject;
   updateProject: (id: string, updates: Partial<WorkProject>) => void;
   deleteProject: (id: string) => void;
   updateWorkLinks: (
@@ -76,6 +84,10 @@ interface CrmContextType {
       userUploadLink?: string;
       clientDownloadLink?: string;
       clientUploadLink?: string;
+      rawFileLink?: string;
+      finalFileLink?: string;
+      clientFolderLink?: string;
+      editorFolderLink?: string;
     }
   ) => void;
   updateWorkStatus: (workId: string, newStatus: WorkStatus, updatedBy: string) => void;
@@ -99,6 +111,7 @@ interface CrmContextType {
   submitEditorCompletion: (workId: string, editorId: string, editorName?: string) => boolean;
   approveWork: (workId: string, clientName?: string) => boolean;
   submitClientRevision: (params: { workId: string; notes: string; timecode?: string; clientName?: string }) => boolean;
+  submitClientDataUpload: (params: { workId: string; clientName?: string; notes?: string }) => boolean;
   updateProjectReview: (workId: string, reviewStatus: string, notes?: string, clientName?: string) => void;
 
   // Payments
@@ -114,6 +127,8 @@ interface CrmContextType {
   deleteExpense: (id: string) => void;
 
   // Notifications & Activities
+  addNotification: (notif: Omit<NotificationItem, 'id' | 'date' | 'time' | 'timestamp' | 'read'> & { id?: string }) => NotificationItem;
+  addNotifications: (items: (Omit<NotificationItem, 'id' | 'date' | 'time' | 'timestamp' | 'read'> & { id?: string })[]) => void;
   markNotificationAsRead: (id: string) => void;
   markAllNotificationsAsRead: (filter?: { role?: 'admin' | 'client' | 'editor'; id?: string }) => void;
   deleteNotification: (id: string) => void;
@@ -185,8 +200,6 @@ interface CrmContextType {
 
 const CrmContext = createContext<CrmContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_KEY = 'vidzyra_crm_database_v1';
-
 export const ROUTE_TO_TAB: Record<string, string> = {
   '/': 'dashboard',
   '/dashboard': 'dashboard',
@@ -252,16 +265,6 @@ export function getInitialTab(): string {
   if (hash && ROUTE_TO_TAB['/' + hash]) {
     return ROUTE_TO_TAB['/' + hash];
   }
-  if (
-    hash &&
-    ['dashboard', 'clients', 'editors', 'work', 'projects', 'payments', 'reports', 'datacenter', 'data', 'settings'].includes(
-      hash
-    )
-  ) {
-    if (hash === 'projects') return 'work';
-    if (hash === 'data') return 'datacenter';
-    return hash;
-  }
   try {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab') || params.get('page') || params.get('section');
@@ -271,9 +274,8 @@ export function getInitialTab(): string {
   } catch {
     // ignore
   }
-  // Check localStorage for persisted active tab across page refreshes
   try {
-    const savedTab = localStorage.getItem(LOCAL_STORAGE_KEY + '_active_tab');
+    const savedTab = localStorage.getItem('vidzyra_crm_active_tab');
     if (
       savedTab &&
       ['dashboard', 'clients', 'editors', 'work', 'payments', 'reports', 'datacenter', 'settings'].includes(savedTab)
@@ -287,57 +289,33 @@ export function getInitialTab(): string {
 }
 
 export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Try loading from localStorage
-  const [clients, setClients] = useState<Client[]>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_clients');
-    return saved ? JSON.parse(saved) : initialClients;
-  });
+  // Empty default database state - NO DEMO OR MOCK DATA
+  const [clients, setClients] = useState<Client[]>([]);
+  const [editors, setEditors] = useState<Editor[]>([]);
+  const [projects, setProjects] = useState<WorkProject[]>([]);
+  const [clientPayments, setClientPayments] = useState<ClientPayment[]>([]);
+  const [editorPayments, setEditorPayments] = useState<EditorPayment[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [settings, setSettings] = useState<BusinessSettings>(initialSettings);
 
-  const [editors, setEditors] = useState<Editor[]>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_editors');
-    return saved ? JSON.parse(saved) : initialEditors;
-  });
+  // Firestore status
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [firestoreError, setFirestoreError] = useState<string | null>(null);
 
-  const [projects, setProjects] = useState<WorkProject[]>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_projects');
-    return saved ? JSON.parse(saved) : initialProjects;
-  });
-
-  const [clientPayments, setClientPayments] = useState<ClientPayment[]>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_cpayments');
-    return saved ? JSON.parse(saved) : initialClientPayments;
-  });
-
-  const [editorPayments, setEditorPayments] = useState<EditorPayment[]>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_epayments');
-    return saved ? JSON.parse(saved) : initialEditorPayments;
-  });
-
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_expenses');
-    return saved ? JSON.parse(saved) : initialExpenses;
-  });
-
-  const [activities, setActivities] = useState<Activity[]>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_activities');
-    return saved ? JSON.parse(saved) : initialActivities;
-  });
-
-  const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_notifications');
-    return saved ? JSON.parse(saved) : initialNotifications;
-  });
-
-  const [settings, setSettings] = useState<BusinessSettings>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_settings');
-    return saved ? JSON.parse(saved) : initialSettings;
-  });
-
-  // Navigation State with Browser History & Hash & LocalStorage Sync
+  // UI state & navigation
   const [activeTab, setActiveTabState] = useState<string>(() => getInitialTab());
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [selectedEditorId, setSelectedEditorId] = useState<string | null>(null);
   const [selectedWorkId, setSelectedWorkIdState] = useState<string | null>(() => getInitialWorkId());
+
+  // Portal simulation state
+  const [activePortalUser, setActivePortalUser] = useState<{
+    type: 'admin' | 'client' | 'editor';
+    id: string;
+  } | null>(null);
 
   const setSelectedWorkId = (workId: string | null, updateHistory: boolean = true) => {
     setSelectedWorkIdState(workId);
@@ -349,12 +327,12 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             window.history.pushState({ tab: activeTab, workId }, '', targetRoute);
           }
         } catch {
-          // Fallback for strict sandboxed iframe
+          // Ignore iframe error
         }
         try {
           window.location.hash = `work/${workId}`;
         } catch {
-          // ignore
+          // Ignore
         }
       } else {
         const targetRoute = TAB_TO_ROUTE[activeTab] || `/${activeTab}`;
@@ -363,14 +341,14 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             window.history.pushState({ tab: activeTab, workId: null }, '', targetRoute);
           }
         } catch {
-          // Fallback
+          // Ignore
         }
         try {
           if (window.location.hash.startsWith('#work/') || window.location.hash.startsWith('work/')) {
             window.location.hash = activeTab;
           }
         } catch {
-          // ignore
+          // Ignore
         }
       }
     }
@@ -379,9 +357,9 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setActiveTab = (tab: string) => {
     setActiveTabState(tab);
     try {
-      localStorage.setItem(LOCAL_STORAGE_KEY + '_active_tab', tab);
+      localStorage.setItem('vidzyra_crm_active_tab', tab);
     } catch {
-      // ignore
+      // Ignore
     }
     if (typeof window !== 'undefined') {
       const targetRoute = TAB_TO_ROUTE[tab] || `/${tab}`;
@@ -390,18 +368,19 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           window.history.pushState({ tab, workId: null }, '', targetRoute);
         }
       } catch {
-        // Fallback for strict sandboxed iframe
+        // Ignore
       }
       try {
         if (window.location.hash.replace(/^#\/?/, '') !== tab) {
           window.location.hash = tab;
         }
       } catch {
-        // ignore
+        // Ignore
       }
     }
   };
 
+  // Synchronize browser history & hash changes
   useEffect(() => {
     const handleRouteSync = (e?: Event) => {
       const tab = getInitialTab();
@@ -414,11 +393,6 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         workId = getInitialWorkId();
       }
       setSelectedWorkIdState(workId);
-      try {
-        localStorage.setItem(LOCAL_STORAGE_KEY + '_active_tab', tab);
-      } catch {
-        // ignore
-      }
     };
     window.addEventListener('popstate', handleRouteSync);
     window.addEventListener('hashchange', handleRouteSync);
@@ -428,48 +402,143 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [activeTab]);
 
-  // Portal simulation state (allows testing client/editor view directly or via URL params)
-  const [activePortalUser, setActivePortalUser] = useState<{
-    type: 'admin' | 'client' | 'editor';
-    id: string;
-  } | null>(null);
-
-  // Persist to localStorage
+  // ==========================================
+  // REAL-TIME FIRESTORE SUBSCRIPTIONS
+  // ==========================================
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_clients', JSON.stringify(clients));
-  }, [clients]);
+    let active = true;
+    let initialCount = 0;
+    const requiredFeeds = 8;
 
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_editors', JSON.stringify(editors));
-  }, [editors]);
+    const checkReady = () => {
+      initialCount++;
+      if (initialCount >= requiredFeeds && active) {
+        setIsLoading(false);
+      }
+    };
 
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(projects));
-  }, [projects]);
+    const unsubClients = firestoreService.subscribeClients(
+      (data) => {
+        if (active) {
+          setClients(data);
+          checkReady();
+        }
+      },
+      (err) => {
+        if (active) setFirestoreError(String(err));
+      }
+    );
 
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_cpayments', JSON.stringify(clientPayments));
-  }, [clientPayments]);
+    const unsubEditors = firestoreService.subscribeEditors(
+      (data) => {
+        if (active) {
+          setEditors(data);
+          checkReady();
+        }
+      },
+      (err) => {
+        if (active) setFirestoreError(String(err));
+      }
+    );
 
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_epayments', JSON.stringify(editorPayments));
-  }, [editorPayments]);
+    const unsubProjects = firestoreService.subscribeProjects(
+      (data) => {
+        if (active) {
+          setProjects(data);
+          checkReady();
+        }
+      },
+      (err) => {
+        if (active) setFirestoreError(String(err));
+      }
+    );
 
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_expenses', JSON.stringify(expenses));
-  }, [expenses]);
+    const unsubPayments = firestoreService.subscribePayments(
+      (data) => {
+        if (active) {
+          setClientPayments(data.clientPayments);
+          setEditorPayments(data.editorPayments);
+          checkReady();
+        }
+      },
+      (err) => {
+        if (active) setFirestoreError(String(err));
+      }
+    );
 
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_activities', JSON.stringify(activities));
-  }, [activities]);
+    const unsubExpenses = firestoreService.subscribeExpenses(
+      (data) => {
+        if (active) {
+          setExpenses(data);
+          checkReady();
+        }
+      },
+      (err) => {
+        if (active) setFirestoreError(String(err));
+      }
+    );
 
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_notifications', JSON.stringify(notifications));
-  }, [notifications]);
+    const unsubNotifications = firestoreService.subscribeNotifications(
+      (data) => {
+        if (active) {
+          setNotifications(data);
+          checkReady();
+        }
+      },
+      (err) => {
+        if (active) setFirestoreError(String(err));
+      }
+    );
 
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_settings', JSON.stringify(settings));
-  }, [settings]);
+    const unsubActivities = firestoreService.subscribeActivities(
+      (data) => {
+        if (active) {
+          setActivities(data);
+          checkReady();
+        }
+      },
+      (err) => {
+        if (active) setFirestoreError(String(err));
+      }
+    );
+
+    const unsubSettings = firestoreService.subscribeSettings(
+      (data) => {
+        if (active) {
+          if (data) {
+            setSettings(data);
+          } else {
+            // First time setup: initialize business settings document in Firestore
+            firestoreService.saveSettingsDoc(initialSettings).catch(() => {});
+          }
+          checkReady();
+        }
+      },
+      (err) => {
+        if (active) setFirestoreError(String(err));
+      }
+    );
+
+    // Timeout safety fallback: don't block user interface indefinitely
+    const timeout = setTimeout(() => {
+      if (active && isLoading) {
+        setIsLoading(false);
+      }
+    }, 2500);
+
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+      unsubClients();
+      unsubEditors();
+      unsubProjects();
+      unsubPayments();
+      unsubExpenses();
+      unsubNotifications();
+      unsubActivities();
+      unsubSettings();
+    };
+  }, []);
 
   // Helper to format date/time
   const getFormattedDateTime = () => {
@@ -480,35 +549,117 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Helper to log activity
-  const addActivity = (act: Omit<Activity, 'id' | 'timestamp' | 'when'>) => {
+  const addActivity = useCallback((act: Omit<Activity, 'id' | 'timestamp' | 'when'>) => {
     const { formatted, timestamp } = getFormattedDateTime();
+    const id = `act-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const newAct: Activity = {
       ...act,
-      id: 'act-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      id,
       when: formatted,
       timestamp,
     };
+    // Optimistic update
     setActivities((prev) => [newAct, ...prev]);
-  };
+    // Firestore write
+    firestoreService.createActivityDoc(newAct).catch((err) => {
+      console.error('Failed to write activity to Firestore:', err);
+    });
+  }, []);
 
-  // Helper to add notification
-  const addNotification = (notif: Omit<NotificationItem, 'id' | 'date' | 'time' | 'timestamp' | 'read'>) => {
-    const { date, time, timestamp } = getFormattedDateTime();
-    const newNotif: NotificationItem = {
-      ...notif,
-      id: 'notif-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
-      date,
-      time,
-      timestamp,
-      read: false,
-    };
-    setNotifications((prev) => [newNotif, ...prev]);
-  };
+  // Helper to add a single notification
+  const addNotification = useCallback(
+    (
+      notif: Omit<NotificationItem, 'id' | 'date' | 'time' | 'timestamp' | 'read'> & { id?: string }
+    ): NotificationItem => {
+      const { date, time, timestamp } = getFormattedDateTime();
+      const id = notif.id || `notif-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+      const recipientId =
+        notif.recipientId ||
+        (notif.targetRole === 'admin'
+          ? 'admin'
+          : notif.targetRole === 'client'
+          ? notif.relatedClientId
+          : notif.relatedEditorId || 'admin');
+      const recipientRole = notif.recipientRole || notif.targetRole || 'admin';
 
-  // CLIENT CRUD
+      const newNotif: NotificationItem = {
+        ...notif,
+        id,
+        recipientId,
+        recipientRole,
+        targetRole: notif.targetRole || recipientRole,
+        date,
+        time,
+        timestamp,
+        read: false,
+      };
+
+      setNotifications((prev) => {
+        if (prev.some((n) => n.id === id)) return prev;
+        return [newNotif, ...prev];
+      });
+
+      firestoreService.createNotificationDoc(newNotif).catch((err) => {
+        console.error('Failed to write notification to Firestore:', err);
+      });
+
+      return newNotif;
+    },
+    []
+  );
+
+  // Helper to add multiple notifications atomically
+  const addNotifications = useCallback(
+    (items: (Omit<NotificationItem, 'id' | 'date' | 'time' | 'timestamp' | 'read'> & { id?: string })[]) => {
+      if (!items || items.length === 0) return;
+      const { date, time, timestamp } = getFormattedDateTime();
+
+      const newItems: NotificationItem[] = items.map((notif, idx) => {
+        const id = notif.id || `notif-${Date.now() + idx}-${Math.floor(Math.random() * 100000)}`;
+        const recipientId =
+          notif.recipientId ||
+          (notif.targetRole === 'admin'
+            ? 'admin'
+            : notif.targetRole === 'client'
+            ? notif.relatedClientId
+            : notif.relatedEditorId || 'admin');
+        const recipientRole = notif.recipientRole || notif.targetRole || 'admin';
+
+        return {
+          ...notif,
+          id,
+          recipientId,
+          recipientRole,
+          targetRole: notif.targetRole || recipientRole,
+          date,
+          time,
+          timestamp: timestamp + idx,
+          read: false,
+        };
+      });
+
+      setNotifications((prev) => {
+        const existingIds = new Set(prev.map((n) => n.id));
+        const uniqueNew = newItems.filter((n) => !existingIds.has(n.id));
+        if (uniqueNew.length === 0) return prev;
+        return [...uniqueNew, ...prev];
+      });
+
+      newItems.forEach((n) => {
+        firestoreService.createNotificationDoc(n).catch((err) => {
+          console.error('Failed to write bulk notification to Firestore:', err);
+        });
+      });
+    },
+    []
+  );
+
+  // ==========================================
+  // CLIENT OPERATIONS
+  // ==========================================
   const addClient = (clientData: Omit<Client, 'id' | 'createdAt' | 'portalToken' | 'portalStatus'>): Client => {
-    const id = 'cli-' + Date.now();
-    const token = 'portal-client-' + clientData.name.toLowerCase().replace(/[^a-z0-9]/g, '') + '-' + Math.floor(1000 + Math.random() * 9000);
+    const id = `cli-${Date.now()}`;
+    const token = `portal-client-${clientData.name.toLowerCase().replace(/[^a-z0-9]/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
     const newClient: Client = {
       ...clientData,
       id,
@@ -516,7 +667,11 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       portalStatus: 'Active',
       createdAt: new Date().toISOString(),
     };
+
     setClients((prev) => [newClient, ...prev]);
+    firestoreService.createClientDoc(newClient).catch((err) => {
+      console.error('Failed to create client in Firestore:', err);
+    });
 
     addActivity({
       who: 'Admin',
@@ -537,9 +692,11 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateClient = (id: string, updates: Partial<Client>) => {
-    setClients((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...updates } : c))
-    );
+    setClients((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
+    firestoreService.updateClientDoc(id, updates).catch((err) => {
+      console.error('Failed to update client in Firestore:', err);
+    });
+
     addActivity({
       who: 'Admin',
       action: 'Client edited',
@@ -553,10 +710,15 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteClient = (id: string) => {
     const client = clients.find((c) => c.id === id);
     const clientName = client?.name || 'Client';
+
     setClients((prev) => prev.filter((c) => c.id !== id));
     if (selectedClientId === id) {
       setSelectedClientId(null);
     }
+    firestoreService.deleteClientDoc(id).catch((err) => {
+      console.error('Failed to delete client in Firestore:', err);
+    });
+
     addActivity({
       who: 'Admin',
       action: 'Client deleted',
@@ -564,6 +726,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       entityType: 'client',
       entityId: id,
     });
+
     addNotification({
       type: 'portal',
       message: `Client ${clientName} deleted by Admin.`,
@@ -575,59 +738,40 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const client = clients.find((c) => c.id === id);
     if (!client) return;
 
-    setClients((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, portalStatus: status } : c))
-    );
+    setClients((prev) => prev.map((c) => (c.id === id ? { ...c, portalStatus: status } : c)));
+    firestoreService.updateClientDoc(id, { portalStatus: status }).catch((err) => {
+      console.error('Failed to update client portal status in Firestore:', err);
+    });
 
-    if (status === 'Deleted') {
-      addActivity({
-        who: 'Admin',
-        action: 'Portal permanently deleted',
-        what: `Client portal for "${client.name}" was permanently deleted`,
-        entityType: 'portal',
-        entityId: id,
-        clientId: id,
-      });
-      addNotification({
-        type: 'portal',
-        message: `Portal permanently deleted for client "${client.name}"`,
-        relatedClientId: id,
-      });
-    } else if (status === 'Inactive') {
-      addActivity({
-        who: 'Admin',
-        action: 'Portal inactivated',
-        what: `Client portal for "${client.name}" was set to Inactive`,
-        entityType: 'portal',
-        entityId: id,
-        clientId: id,
-      });
-      addNotification({
-        type: 'portal',
-        message: `Portal inactivated for client "${client.name}"`,
-        relatedClientId: id,
-      });
-    } else {
-      addActivity({
-        who: 'Admin',
-        action: 'Portal activated',
-        what: `Client portal for "${client.name}" was Activated`,
-        entityType: 'portal',
-        entityId: id,
-        clientId: id,
-      });
-      addNotification({
-        type: 'portal',
-        message: `Portal activated for client "${client.name}"`,
-        relatedClientId: id,
-      });
-    }
+    const actionText =
+      status === 'Deleted'
+        ? 'Portal permanently deleted'
+        : status === 'Inactive'
+        ? 'Portal inactivated'
+        : 'Portal activated';
+
+    addActivity({
+      who: 'Admin',
+      action: actionText,
+      what: `Client portal for "${client.name}" status: ${status}`,
+      entityType: 'portal',
+      entityId: id,
+      clientId: id,
+    });
+
+    addNotification({
+      type: 'portal',
+      message: `Client portal for "${client.name}" status changed to ${status}`,
+      relatedClientId: id,
+    });
   };
 
-  // EDITOR CRUD
+  // ==========================================
+  // EDITOR OPERATIONS
+  // ==========================================
   const addEditor = (editorData: Omit<Editor, 'id' | 'createdAt' | 'portalToken' | 'portalStatus'>): Editor => {
-    const id = 'edt-' + Date.now();
-    const token = 'portal-editor-' + editorData.name.toLowerCase().replace(/[^a-z0-9]/g, '') + '-' + Math.floor(1000 + Math.random() * 9000);
+    const id = `edt-${Date.now()}`;
+    const token = `portal-editor-${editorData.name.toLowerCase().replace(/[^a-z0-9]/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
     const newEditor: Editor = {
       ...editorData,
       id,
@@ -635,7 +779,11 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       portalStatus: 'Active',
       createdAt: new Date().toISOString(),
     };
+
     setEditors((prev) => [newEditor, ...prev]);
+    firestoreService.createEditorDoc(newEditor).catch((err) => {
+      console.error('Failed to create editor in Firestore:', err);
+    });
 
     addActivity({
       who: 'Admin',
@@ -656,9 +804,11 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateEditor = (id: string, updates: Partial<Editor>) => {
-    setEditors((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, ...updates } : e))
-    );
+    setEditors((prev) => prev.map((e) => (e.id === id ? { ...e, ...updates } : e)));
+    firestoreService.updateEditorDoc(id, updates).catch((err) => {
+      console.error('Failed to update editor in Firestore:', err);
+    });
+
     addActivity({
       who: 'Admin',
       action: 'Editor edited',
@@ -672,23 +822,27 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteEditor = (id: string) => {
     const editor = editors.find((e) => e.id === id);
     const editorName = editor?.name || 'Editor';
+
     setEditors((prev) => prev.filter((e) => e.id !== id));
     if (selectedEditorId === id) {
       setSelectedEditorId(null);
     }
-    // Safely update projects that had this editor assigned
+    firestoreService.deleteEditorDoc(id).catch((err) => {
+      console.error('Failed to delete editor in Firestore:', err);
+    });
+
+    // Unassign projects linked to this editor
     setProjects((prev) =>
       prev.map((p) => {
         if (p.assignedTo === id) {
-          return {
-            ...p,
-            assignedTo: null,
-            workDoneBy: 'Me / Custom',
-          };
+          const updated = { ...p, assignedTo: null, workDoneBy: 'Me / Custom' as const };
+          firestoreService.updateProjectDoc(p.id, { assignedTo: null, workDoneBy: 'Me / Custom' }).catch(() => {});
+          return updated;
         }
         return p;
       })
     );
+
     addActivity({
       who: 'Admin',
       action: 'Editor deleted',
@@ -696,6 +850,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       entityType: 'editor',
       entityId: id,
     });
+
     addNotification({
       type: 'work',
       message: `Editor ${editorName} deleted by Admin.`,
@@ -707,46 +862,37 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const editor = editors.find((e) => e.id === id);
     if (!editor) return;
 
-    setEditors((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, portalStatus: status } : e))
-    );
+    setEditors((prev) => prev.map((e) => (e.id === id ? { ...e, portalStatus: status } : e)));
+    firestoreService.updateEditorDoc(id, { portalStatus: status }).catch((err) => {
+      console.error('Failed to update editor portal status in Firestore:', err);
+    });
 
-    if (status === 'Deleted') {
-      addActivity({
-        who: 'Admin',
-        action: 'Portal permanently deleted',
-        what: `Editor portal for "${editor.name}" was permanently deleted`,
-        entityType: 'portal',
-        entityId: id,
-        editorId: id,
-      });
-      addNotification({
-        type: 'portal',
-        message: `Portal permanently deleted for editor "${editor.name}"`,
-        relatedEditorId: id,
-      });
-    } else if (status === 'Inactive') {
-      addActivity({
-        who: 'Admin',
-        action: 'Portal inactivated',
-        what: `Editor portal for "${editor.name}" was set to Inactive`,
-        entityType: 'portal',
-        entityId: id,
-        editorId: id,
-      });
-    } else {
-      addActivity({
-        who: 'Admin',
-        action: 'Portal activated',
-        what: `Editor portal for "${editor.name}" was Activated`,
-        entityType: 'portal',
-        entityId: id,
-        editorId: id,
-      });
-    }
+    const actionText =
+      status === 'Deleted'
+        ? 'Portal permanently deleted'
+        : status === 'Inactive'
+        ? 'Portal inactivated'
+        : 'Portal activated';
+
+    addActivity({
+      who: 'Admin',
+      action: actionText,
+      what: `Editor portal for "${editor.name}" status: ${status}`,
+      entityType: 'portal',
+      entityId: id,
+      editorId: id,
+    });
+
+    addNotification({
+      type: 'portal',
+      message: `Editor portal for "${editor.name}" status changed to ${status}`,
+      relatedEditorId: id,
+    });
   };
 
-  // WORK / PROJECT CRUD
+  // ==========================================
+  // PROJECT / WORK OPERATIONS
+  // ==========================================
   const addProject = (
     projectData: Omit<
       WorkProject,
@@ -761,97 +907,61 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       | 'clientDownloadConfirmed'
     >
   ): WorkProject => {
-    const id = 'wrk-' + Date.now();
+    const id = `wrk-${Date.now()}`;
     const { date, time } = getFormattedDateTime();
     const client = clients.find((c) => c.id === projectData.clientId);
     const editor = editors.find((e) => e.id === projectData.assignedTo);
 
-    const initialTimeline = [
+    const initialTimeline: TimelineEvent[] = [
       {
-        id: 'tm-' + Date.now(),
+        id: `tm-${Date.now()}`,
         person: 'Admin',
-        action: `Work Created (${projectData.name})`,
+        action: editor ? `Work created & assigned to ${editor.name}` : 'Work created',
         date,
         time,
         status: projectData.status,
       },
     ];
 
-    if (projectData.workDoneBy === 'Assigned' && editor) {
-      initialTimeline.push({
-        id: 'tm-' + (Date.now() + 1),
-        person: 'Admin',
-        action: `Assigned to ${editor.name}`,
-        date,
-        time,
-        status: 'Assigned',
-      });
-    }
-
-    const finalQuantity = Number(projectData.quantity) || 1;
-    const finalClientRate = Number(projectData.clientRate) || 0;
-    const finalWorkDoneBy = projectData.workDoneBy || 'Me / Custom';
-    const finalEditorRate = Number(projectData.editorRate) || 0;
-    const finalAssignedTo = projectData.assignedTo;
-
-    const totalBilling = projectData.totalBilling !== undefined 
-      ? projectData.totalBilling 
-      : finalQuantity * finalClientRate;
-
-    const editorCost = projectData.editorCost !== undefined
-      ? projectData.editorCost
-      : (finalWorkDoneBy === 'Assigned' && finalAssignedTo ? finalQuantity * finalEditorRate : 0);
-
-    const profit = totalBilling - editorCost;
-
     const newProject: WorkProject = {
       ...projectData,
       id,
-      quantity: finalQuantity,
-      clientRate: finalClientRate,
-      workDoneBy: finalWorkDoneBy,
-      editorRate: finalEditorRate,
-      assignedTo: finalAssignedTo,
-      totalBilling,
-      editorCost,
-      profit,
-      createdAt: new Date().toISOString(),
-      timeline: initialTimeline,
-      revisionCount: 0,
-      revisionStatus: 'No Revision',
+      clientUploadConfirmed: false,
       editorDownloadConfirmed: false,
       editorUploadConfirmed: false,
-      clientUploadConfirmed: false,
       clientDownloadConfirmed: false,
+      revisionCount: 0,
+      revisionStatus: 'No Revision',
+      timeline: initialTimeline,
+      createdAt: new Date().toISOString(),
     };
 
     setProjects((prev) => [newProject, ...prev]);
+    firestoreService.createProjectDoc(newProject).catch((err) => {
+      console.error('Failed to create project in Firestore:', err);
+    });
 
     addActivity({
       who: 'Admin',
       action: 'Work created',
-      what: `Created work "${newProject.name}" for client "${client?.name || 'Client'}" (₹${newProject.totalBilling})`,
+      what: `Created deliverable "${newProject.name}" for client "${client?.name || 'Client'}"`,
       entityType: 'work',
       entityId: id,
-      clientId: newProject.clientId,
-      editorId: newProject.assignedTo || undefined,
+      clientId: projectData.clientId,
+      editorId: projectData.assignedTo || undefined,
     });
 
-    addNotification({
-      type: 'work',
-      message: `Work created: "${newProject.name}" for ${client?.name || 'Client'}`,
-      relatedClientId: newProject.clientId,
-      relatedEditorId: newProject.assignedTo || undefined,
-      relatedWorkId: id,
-    });
-
-    if (newProject.workDoneBy === 'Assigned' && editor) {
+    // Notify assigned editor
+    if (projectData.assignedTo) {
       addNotification({
         type: 'work',
-        message: `Work "${newProject.name}" assigned to editor ${editor.name}`,
-        relatedClientId: newProject.clientId,
-        relatedEditorId: editor.id,
+        message: `You were assigned a new project: "${newProject.name}"`,
         relatedWorkId: id,
+        relatedClientId: projectData.clientId,
+        relatedEditorId: projectData.assignedTo,
+        recipientId: projectData.assignedTo,
+        recipientRole: 'editor',
+        targetRole: 'editor',
       });
     }
 
@@ -859,83 +969,35 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateProject = (id: string, updates: Partial<WorkProject>) => {
-    const project = projects.find((p) => p.id === id);
-    if (!project) return;
-
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id !== id) return p;
-        const finalQuantity = updates.quantity !== undefined ? updates.quantity : p.quantity;
-        const finalClientRate = updates.clientRate !== undefined ? updates.clientRate : p.clientRate;
-        const finalWorkDoneBy = updates.workDoneBy !== undefined ? updates.workDoneBy : p.workDoneBy;
-        const finalEditorRate = updates.editorRate !== undefined ? updates.editorRate : (p.editorRate || 0);
-        const finalAssignedTo = updates.assignedTo !== undefined ? updates.assignedTo : p.assignedTo;
-
-        const newTotalBilling = updates.totalBilling !== undefined 
-          ? updates.totalBilling 
-          : finalQuantity * finalClientRate;
-
-        const newEditorCost = updates.editorCost !== undefined
-          ? updates.editorCost
-          : (finalWorkDoneBy === 'Assigned' && finalAssignedTo ? finalQuantity * finalEditorRate : 0);
-
-        const newProfit = newTotalBilling - newEditorCost;
-
-        return {
-          ...p,
-          ...updates,
-          quantity: finalQuantity,
-          clientRate: finalClientRate,
-          workDoneBy: finalWorkDoneBy,
-          editorRate: finalEditorRate,
-          assignedTo: finalAssignedTo,
-          totalBilling: newTotalBilling,
-          editorCost: newEditorCost,
-          profit: newProfit,
-        };
-      })
-    );
-
-    addActivity({
-      who: 'Admin',
-      action: 'Work edited',
-      what: `Updated details for project "${updates.name || project.name}"`,
-      entityType: 'work',
-      entityId: id,
-      clientId: project.clientId,
-      editorId: project.assignedTo || undefined,
+    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+    firestoreService.updateProjectDoc(id, updates).catch((err) => {
+      console.error('Failed to update project in Firestore:', err);
     });
   };
 
   const deleteProject = (id: string) => {
     const project = projects.find((p) => p.id === id);
-    if (!project) return;
-    setProjects((prev) => {
-      const remaining = prev.filter((p) => p.id !== id);
-      try {
-        localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(remaining));
-      } catch (err) {
-        console.error('Failed to sync projects to localStorage', err);
-      }
-      return remaining;
-    });
+    const projectName = project?.name || 'Project';
 
+    setProjects((prev) => prev.filter((p) => p.id !== id));
     if (selectedWorkId === id) {
       setSelectedWorkId(null);
     }
+    firestoreService.deleteProjectDoc(id).catch((err) => {
+      console.error('Failed to delete project in Firestore:', err);
+    });
 
     addActivity({
       who: 'Admin',
       action: 'Work deleted',
-      what: `Deleted project "${project.name || id}"`,
+      what: `Deliverable project "${projectName}" was deleted`,
       entityType: 'work',
       entityId: id,
-      clientId: project.clientId,
-      editorId: project.assignedTo || undefined,
+      clientId: project?.clientId,
+      editorId: project?.assignedTo || undefined,
     });
   };
 
-  // The Exact 4 Links System: Update links anytime
   const updateWorkLinks = (
     workId: string,
     links: {
@@ -943,89 +1005,47 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       userUploadLink?: string;
       clientDownloadLink?: string;
       clientUploadLink?: string;
+      rawFileLink?: string;
+      finalFileLink?: string;
+      clientFolderLink?: string;
+      editorFolderLink?: string;
     }
   ) => {
-    const project = projects.find((p) => p.id === workId);
-    if (!project) return;
-
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id !== workId) return p;
-        return {
-          ...p,
-          userDownloadLink: links.userDownloadLink !== undefined ? links.userDownloadLink : p.userDownloadLink,
-          userUploadLink: links.userUploadLink !== undefined ? links.userUploadLink : p.userUploadLink,
-          clientDownloadLink: links.clientDownloadLink !== undefined ? links.clientDownloadLink : p.clientDownloadLink,
-          clientUploadLink: links.clientUploadLink !== undefined ? links.clientUploadLink : p.clientUploadLink,
-        };
-      })
-    );
-
-    addActivity({
-      who: 'Admin',
-      action: 'Link editing',
-      what: `Updated portal cloud storage links for "${project.name}"`,
-      entityType: 'portal',
-      entityId: workId,
-      clientId: project.clientId,
-      editorId: project.assignedTo || undefined,
-    });
-
-    addNotification({
-      type: 'portal',
-      message: `Portal links updated for "${project.name}"`,
-      relatedClientId: project.clientId,
-      relatedEditorId: project.assignedTo || undefined,
-      relatedWorkId: workId,
-    });
+    updateProject(workId, links);
   };
 
-  // Status changes from Admin or Portals
   const updateWorkStatus = (workId: string, newStatus: WorkStatus, updatedBy: string) => {
     const project = projects.find((p) => p.id === workId);
     if (!project) return;
 
     const { date, time } = getFormattedDateTime();
-    const newTimelineItem = {
-      id: 'tm-' + Date.now(),
+    const newTimelineItem: TimelineEvent = {
+      id: `tm-${Date.now()}`,
       person: updatedBy,
-      action: `Status changed to: ${newStatus}`,
+      action: `Status changed to ${newStatus}`,
       date,
       time,
       status: newStatus,
     };
 
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id !== workId) return p;
-        return {
-          ...p,
-          status: newStatus,
-          timeline: [...p.timeline, newTimelineItem],
-        };
-      })
-    );
+    const updates = {
+      status: newStatus,
+      timeline: [...project.timeline, newTimelineItem],
+    };
+
+    updateProject(workId, updates);
 
     addActivity({
       who: updatedBy,
-      action: 'Work status changed',
-      what: `Status changed to "${newStatus}" on "${project.name}"`,
+      action: 'Status updated',
+      what: `Updated status for "${project.name}" to "${newStatus}"`,
       entityType: 'work',
       entityId: workId,
       clientId: project.clientId,
       editorId: project.assignedTo || undefined,
     });
-
-    addNotification({
-      type: 'work',
-      message: `Work status for "${project.name}" changed to "${newStatus}" by ${updatedBy}`,
-      relatedClientId: project.clientId,
-      relatedEditorId: project.assignedTo || undefined,
-      relatedWorkId: workId,
-    });
   };
 
-  // Manual Upload / Download Confirmations
   const confirmAction = (
     workId: string,
     actionType: 'editor_download' | 'editor_upload' | 'client_upload' | 'client_download',
@@ -1036,76 +1056,46 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const { date, time, formatted } = getFormattedDateTime();
     let actionLabel = '';
-    let notifMsg = '';
-    let statusUpdate: WorkStatus | undefined = undefined;
-
-    const updates: Partial<WorkProject> = {};
+    const fieldUpdates: Partial<WorkProject> = {};
 
     if (actionType === 'editor_download') {
-      updates.editorDownloadConfirmed = true;
-      updates.editorDownloadConfirmedAt = formatted;
-      actionLabel = 'Raw Data Download Confirmed';
-      notifMsg = `Editor confirmed raw data downloaded for "${project.name}"`;
-      if (project.status === 'Assigned' || project.status === 'Pending') {
-        statusUpdate = 'In Progress';
-      }
+      fieldUpdates.editorDownloadConfirmed = true;
+      fieldUpdates.editorDownloadConfirmedAt = formatted;
+      actionLabel = 'Editor downloaded raw files';
     } else if (actionType === 'editor_upload') {
-      updates.editorUploadConfirmed = true;
-      updates.editorUploadConfirmedAt = formatted;
-      actionLabel = 'Edited Data Upload Confirmed';
-      notifMsg = `Editor confirmed edited data uploaded for "${project.name}"`;
-      if (project.status === 'In Progress') {
-        statusUpdate = 'Completed';
-      }
+      fieldUpdates.editorUploadConfirmed = true;
+      fieldUpdates.editorUploadConfirmedAt = formatted;
+      actionLabel = 'Editor uploaded final files';
     } else if (actionType === 'client_upload') {
-      updates.clientUploadConfirmed = true;
-      updates.clientUploadConfirmedAt = formatted;
-      actionLabel = 'Client Raw Data Upload Confirmed';
-      notifMsg = `Client confirmed raw data uploaded for "${project.name}"`;
+      fieldUpdates.clientUploadConfirmed = true;
+      fieldUpdates.clientUploadConfirmedAt = formatted;
+      actionLabel = 'Raw data uploaded by client';
     } else if (actionType === 'client_download') {
-      updates.clientDownloadConfirmed = true;
-      updates.clientDownloadConfirmedAt = formatted;
-      actionLabel = 'Client Download Confirmed';
-      notifMsg = `Client confirmed edited data downloaded for "${project.name}"`;
+      fieldUpdates.clientDownloadConfirmed = true;
+      fieldUpdates.clientDownloadConfirmedAt = formatted;
+      actionLabel = 'Client downloaded deliverables';
     }
 
-    const newTimelineItem = {
-      id: 'tm-' + Date.now(),
+    const newTimelineItem: TimelineEvent = {
+      id: `tm-${Date.now()}`,
       person: confirmedBy,
       action: actionLabel,
       date,
       time,
-      status: statusUpdate || project.status,
+      status: project.status,
     };
 
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id !== workId) return p;
-        return {
-          ...p,
-          ...updates,
-          status: statusUpdate || p.status,
-          timeline: [...p.timeline, newTimelineItem],
-        };
-      })
-    );
+    fieldUpdates.timeline = [...project.timeline, newTimelineItem];
+    updateProject(workId, fieldUpdates);
 
     addActivity({
       who: confirmedBy,
       action: actionLabel,
-      what: notifMsg,
-      entityType: 'confirmation',
+      what: `${confirmedBy} confirmed: ${actionLabel} on "${project.name}"`,
+      entityType: 'work',
       entityId: workId,
       clientId: project.clientId,
       editorId: project.assignedTo || undefined,
-    });
-
-    addNotification({
-      type: 'confirmation',
-      message: notifMsg,
-      relatedClientId: project.clientId,
-      relatedEditorId: project.assignedTo || undefined,
-      relatedWorkId: workId,
     });
   };
 
@@ -1113,86 +1103,25 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     workId: string,
     actionType: 'editor_download' | 'editor_upload' | 'client_upload' | 'client_download'
   ) => {
-    const project = projects.find((p) => p.id === workId);
-    if (!project) return;
-
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id !== workId) return p;
-        if (actionType === 'editor_download') {
-          return { ...p, editorDownloadConfirmed: false, editorDownloadConfirmedAt: undefined };
-        }
-        if (actionType === 'editor_upload') {
-          return { ...p, editorUploadConfirmed: false, editorUploadConfirmedAt: undefined };
-        }
-        if (actionType === 'client_upload') {
-          return { ...p, clientUploadConfirmed: false, clientUploadConfirmedAt: undefined };
-        }
-        if (actionType === 'client_download') {
-          return { ...p, clientDownloadConfirmed: false, clientDownloadConfirmedAt: undefined };
-        }
-        return p;
-      })
-    );
-
-    addActivity({
-      who: 'Admin',
-      action: 'Confirmation reset',
-      what: `Reset ${actionType} confirmation on project "${project.name}"`,
-      entityType: 'confirmation',
-      entityId: workId,
-    });
+    const fieldUpdates: Partial<WorkProject> = {};
+    if (actionType === 'editor_download') {
+      fieldUpdates.editorDownloadConfirmed = false;
+      fieldUpdates.editorDownloadConfirmedAt = undefined;
+    } else if (actionType === 'editor_upload') {
+      fieldUpdates.editorUploadConfirmed = false;
+      fieldUpdates.editorUploadConfirmedAt = undefined;
+    } else if (actionType === 'client_upload') {
+      fieldUpdates.clientUploadConfirmed = false;
+      fieldUpdates.clientUploadConfirmedAt = undefined;
+    } else if (actionType === 'client_download') {
+      fieldUpdates.clientDownloadConfirmed = false;
+      fieldUpdates.clientDownloadConfirmedAt = undefined;
+    }
+    updateProject(workId, fieldUpdates);
   };
 
-  // Revision Workflow
   const requestRevision = (workId: string, notes: string, requestedBy: string) => {
-    const project = projects.find((p) => p.id === workId);
-    if (!project) return;
-
-    const { date, time, formatted } = getFormattedDateTime();
-    const newTimelineItem = {
-      id: 'tm-' + Date.now(),
-      person: requestedBy,
-      action: `Revision Requested: "${notes}"`,
-      date,
-      time,
-      status: 'Revision Required',
-    };
-
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id !== workId) return p;
-        return {
-          ...p,
-          status: 'Revision Required',
-          revisionCount: p.revisionCount + 1,
-          revisionStatus: 'Revision Requested',
-          revisionRequestedDate: formatted,
-          revisionNotes: notes,
-          // Reset editor upload confirmation so they can re-upload
-          editorUploadConfirmed: false,
-          timeline: [...p.timeline, newTimelineItem],
-        };
-      })
-    );
-
-    addActivity({
-      who: requestedBy,
-      action: 'Revision requested',
-      what: `Requested revision on "${project.name}": ${notes}`,
-      entityType: 'revision',
-      entityId: workId,
-      clientId: project.clientId,
-      editorId: project.assignedTo || undefined,
-    });
-
-    addNotification({
-      type: 'revision',
-      message: `Revision requested on "${project.name}" by ${requestedBy}: ${notes}`,
-      relatedClientId: project.clientId,
-      relatedEditorId: project.assignedTo || undefined,
-      relatedWorkId: workId,
-    });
+    submitClientRevision({ workId, notes, clientName: requestedBy });
   };
 
   const updateRevisionStatus = (workId: string, status: RevisionStatus, notes?: string) => {
@@ -1200,8 +1129,8 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!project) return;
 
     const { date, time, formatted } = getFormattedDateTime();
-    const newTimelineItem = {
-      id: 'tm-' + Date.now(),
+    const newTimelineItem: TimelineEvent = {
+      id: `tm-${Date.now()}`,
       person: 'System/Admin',
       action: `Revision status: ${status}`,
       date,
@@ -1209,20 +1138,16 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: status === 'Revision Completed' ? 'Completed' : project.status,
     };
 
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id !== workId) return p;
-        return {
-          ...p,
-          revisionStatus: status,
-          revisionCompletedDate: status === 'Revision Completed' ? formatted : p.revisionCompletedDate,
-          revisionUploadedDate: status === 'Revision Uploaded' ? formatted : p.revisionUploadedDate,
-          revisionNotes: notes || p.revisionNotes,
-          status: status === 'Revision Completed' ? 'Completed' : p.status,
-          timeline: [...p.timeline, newTimelineItem],
-        };
-      })
-    );
+    const updates: Partial<WorkProject> = {
+      revisionStatus: status,
+      revisionCompletedDate: status === 'Revision Completed' ? formatted : project.revisionCompletedDate,
+      revisionUploadedDate: status === 'Revision Uploaded' ? formatted : project.revisionUploadedDate,
+      revisionNotes: notes || project.revisionNotes,
+      status: status === 'Revision Completed' ? 'Completed' : project.status,
+      timeline: [...project.timeline, newTimelineItem],
+    };
+
+    updateProject(workId, updates);
 
     addActivity({
       who: 'Admin',
@@ -1235,12 +1160,8 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  // EDITOR COMPLETION SUBMISSION WORKFLOW
-  const submitEditorCompletion = (
-    workId: string,
-    editorId: string,
-    editorName?: string
-  ): boolean => {
+  // 1. Editor marks project complete -> Notify Admin, Client
+  const submitEditorCompletion = (workId: string, editorId: string, editorName?: string): boolean => {
     const project = projects.find((p) => p.id === workId);
     if (!project) return false;
 
@@ -1249,7 +1170,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const { date, time, formatted } = getFormattedDateTime();
 
     const newTimelineItem: TimelineEvent = {
-      id: 'tm-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      id: `tm-${Date.now()}`,
       person: resolvedEditorName,
       action: 'Work marked as complete & submitted for client review',
       date,
@@ -1257,19 +1178,15 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'Completed',
     };
 
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id !== workId) return p;
-        return {
-          ...p,
-          status: 'Completed',
-          editorUploadConfirmed: true,
-          editorUploadConfirmedAt: p.editorUploadConfirmedAt || formatted,
-          reviewStatus: 'Awaiting Client Review',
-          timeline: [...p.timeline, newTimelineItem],
-        };
-      })
-    );
+    const updates: Partial<WorkProject> = {
+      status: 'Completed',
+      editorUploadConfirmed: true,
+      editorUploadConfirmedAt: project.editorUploadConfirmedAt || formatted,
+      reviewStatus: 'Awaiting Client Review',
+      timeline: [...project.timeline, newTimelineItem],
+    };
+
+    updateProject(workId, updates);
 
     addActivity({
       who: resolvedEditorName,
@@ -1281,45 +1198,48 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       editorId: project.assignedTo || editorId,
     });
 
-    // 1. Notification to Admin
-    addNotification({
-      type: 'work',
-      message: `${resolvedEditorName} marked ${project.name} as complete.`,
-      relatedWorkId: workId,
-      relatedClientId: project.clientId,
-      relatedEditorId: project.assignedTo || editorId,
-      targetRole: 'admin',
-    });
+    // Notify: Admin and Client
+    const notifs: (Omit<NotificationItem, 'id' | 'date' | 'time' | 'timestamp' | 'read'> & { id?: string })[] = [
+      {
+        id: `notif-${Date.now()}-adm`,
+        type: 'work',
+        message: `${resolvedEditorName} marked "${project.name}" as complete.`,
+        relatedWorkId: workId,
+        relatedClientId: project.clientId,
+        relatedEditorId: project.assignedTo || editorId,
+        recipientId: 'admin',
+        recipientRole: 'admin',
+        targetRole: 'admin',
+      },
+      {
+        id: `notif-${Date.now() + 1}-cli`,
+        type: 'work',
+        message: `${resolvedEditorName} submitted "${project.name}" for review.`,
+        relatedWorkId: workId,
+        relatedClientId: project.clientId,
+        relatedEditorId: project.assignedTo || editorId,
+        recipientId: project.clientId,
+        recipientRole: 'client',
+        targetRole: 'client',
+      },
+    ];
 
-    // 2. Notification to Client associated with that Work/Project
-    addNotification({
-      type: 'work',
-      message: `${resolvedEditorName} marked ${project.name} as complete.`,
-      relatedWorkId: workId,
-      relatedClientId: project.clientId,
-      relatedEditorId: project.assignedTo || editorId,
-      targetRole: 'client',
-    });
-
+    addNotifications(notifs);
     return true;
   };
 
-  // CLIENT APPROVAL WORKFLOW
+  // 2. Client approves a project -> Notify Admin, Assigned Editor
   const approveWork = (workId: string, clientName?: string): boolean => {
     const project = projects.find((p) => p.id === workId);
     if (!project) return false;
-
-    // Prevent duplicate approval
-    if (project.status === 'Approved' || project.reviewStatus === 'Approved') {
-      return true;
-    }
+    if (project.status === 'Approved' || project.reviewStatus === 'Approved') return true;
 
     const clientObj = clients.find((c) => c.id === project.clientId);
     const resolvedClientName = clientName || clientObj?.name || 'Client';
     const { date, time, formatted } = getFormattedDateTime();
 
     const newTimelineItem: TimelineEvent = {
-      id: 'tm-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      id: `tm-${Date.now()}`,
       person: resolvedClientName,
       action: 'Deliverable approved by client',
       date,
@@ -1327,20 +1247,16 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'Approved',
     };
 
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id !== workId) return p;
-        return {
-          ...p,
-          status: 'Approved',
-          reviewStatus: 'Approved',
-          reviewNotes: 'Deliverable approved by client.',
-          approvedAt: formatted,
-          approvedBy: resolvedClientName,
-          timeline: [...p.timeline, newTimelineItem],
-        };
-      })
-    );
+    const updates: Partial<WorkProject> = {
+      status: 'Approved',
+      reviewStatus: 'Approved',
+      reviewNotes: 'Deliverable approved by client.',
+      approvedAt: formatted,
+      approvedBy: resolvedClientName,
+      timeline: [...project.timeline, newTimelineItem],
+    };
+
+    updateProject(workId, updates);
 
     addActivity({
       who: resolvedClientName,
@@ -1352,32 +1268,40 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       editorId: project.assignedTo || undefined,
     });
 
-    // 1. Notification to Admin
-    addNotification({
-      type: 'work',
-      message: `${resolvedClientName} approved ${project.name}.`,
-      relatedWorkId: workId,
-      relatedClientId: project.clientId,
-      relatedEditorId: project.assignedTo || undefined,
-      targetRole: 'admin',
-    });
+    // Notify: Admin and Assigned Editor
+    const notifs: (Omit<NotificationItem, 'id' | 'date' | 'time' | 'timestamp' | 'read'> & { id?: string })[] = [
+      {
+        id: `notif-${Date.now()}-adm`,
+        type: 'work',
+        message: `${resolvedClientName} approved ${project.name}.`,
+        relatedWorkId: workId,
+        relatedClientId: project.clientId,
+        relatedEditorId: project.assignedTo || undefined,
+        recipientId: 'admin',
+        recipientRole: 'admin',
+        targetRole: 'admin',
+      },
+    ];
 
-    // 2. Notification to Assigned Editor if exists
     if (project.assignedTo) {
-      addNotification({
+      notifs.push({
+        id: `notif-${Date.now() + 1}-edt`,
         type: 'work',
         message: `${resolvedClientName} approved ${project.name}.`,
         relatedWorkId: workId,
         relatedClientId: project.clientId,
         relatedEditorId: project.assignedTo,
+        recipientId: project.assignedTo,
+        recipientRole: 'editor',
         targetRole: 'editor',
       });
     }
 
+    addNotifications(notifs);
     return true;
   };
 
-  // CLIENT REVISION REQUEST WORKFLOW
+  // 3. Client requests revision -> Notify Admin, Assigned Editor
   const submitClientRevision = (params: {
     workId: string;
     notes: string;
@@ -1396,7 +1320,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       timecode && timecode.trim() ? `[${timecode.trim()}] ${notes.trim()}` : notes.trim();
 
     const newTimelineItem: TimelineEvent = {
-      id: 'tm-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      id: `tm-${Date.now()}`,
       person: resolvedClientName,
       action: `Revision requested${timecode ? ` at ${timecode}` : ''}: "${notes.trim()}"`,
       date,
@@ -1404,24 +1328,31 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'Revision Required',
     };
 
-    setProjects((prev) =>
-      prev.map((p) => {
-        if (p.id !== workId) return p;
-        return {
-          ...p,
-          status: 'Revision Required',
-          revisionCount: (p.revisionCount || 0) + 1,
-          revisionStatus: 'Revision Requested',
-          revisionRequestedDate: formatted,
-          revisionNotes: formattedRevisionNotes,
-          revisionTimecode: timecode?.trim() || undefined,
-          reviewStatus: 'Revision Required',
-          reviewNotes: formattedRevisionNotes,
-          editorUploadConfirmed: false,
-          timeline: [...p.timeline, newTimelineItem],
-        };
-      })
-    );
+    const updates: Partial<WorkProject> = {
+      status: 'Revision Required',
+      revisionCount: (project.revisionCount || 0) + 1,
+      revisionStatus: 'Revision Requested',
+      revisionRequestedDate: formatted,
+      revisionNotes: formattedRevisionNotes,
+      revisionTimecode: timecode?.trim() || undefined,
+      reviewStatus: 'Revision Required',
+      reviewNotes: formattedRevisionNotes,
+      editorUploadConfirmed: false,
+      timeline: [...project.timeline, newTimelineItem],
+    };
+
+    updateProject(workId, updates);
+
+    // Write to Firestore revisions collection
+    firestoreService.createRevisionDoc({
+      projectId: workId,
+      workId,
+      clientId: project.clientId,
+      editorId: project.assignedTo || null,
+      notes: formattedRevisionNotes,
+      timecode: timecode?.trim() || null,
+      status: 'Pending',
+    }).catch(() => {});
 
     addActivity({
       who: resolvedClientName,
@@ -1433,32 +1364,113 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       editorId: project.assignedTo || undefined,
     });
 
-    // 1. Notification to Admin
-    addNotification({
-      type: 'revision',
-      message: `${resolvedClientName} requested a revision for ${project.name}.`,
-      relatedWorkId: workId,
-      relatedClientId: project.clientId,
-      relatedEditorId: project.assignedTo || undefined,
-      targetRole: 'admin',
-    });
+    // Notify: Admin and Assigned Editor
+    const notifs: (Omit<NotificationItem, 'id' | 'date' | 'time' | 'timestamp' | 'read'> & { id?: string })[] = [
+      {
+        id: `notif-${Date.now()}-adm`,
+        type: 'revision',
+        message: `${resolvedClientName} requested a revision for ${project.name}.`,
+        relatedWorkId: workId,
+        relatedClientId: project.clientId,
+        relatedEditorId: project.assignedTo || undefined,
+        recipientId: 'admin',
+        recipientRole: 'admin',
+        targetRole: 'admin',
+      },
+    ];
 
-    // 2. Notification to assigned Editor if exists
     if (project.assignedTo) {
-      addNotification({
+      notifs.push({
+        id: `notif-${Date.now() + 1}-edt`,
         type: 'revision',
         message: `${resolvedClientName} requested a revision for ${project.name}.`,
         relatedWorkId: workId,
         relatedClientId: project.clientId,
         relatedEditorId: project.assignedTo,
+        recipientId: project.assignedTo,
+        recipientRole: 'editor',
         targetRole: 'editor',
       });
     }
 
+    addNotifications(notifs);
     return true;
   };
 
-  // Generic review update bridge
+  // 4. Client uploads data -> Notify Admin, Assigned Editor if one exists (if no editor: notify Admin only)
+  const submitClientDataUpload = (params: {
+    workId: string;
+    clientName?: string;
+    notes?: string;
+  }): boolean => {
+    const { workId, clientName, notes } = params;
+    const project = projects.find((p) => p.id === workId);
+    if (!project) return false;
+
+    const clientObj = clients.find((c) => c.id === project.clientId);
+    const resolvedClientName = clientName || clientObj?.name || 'Client';
+    const { date, time, formatted } = getFormattedDateTime();
+
+    const newTimelineItem: TimelineEvent = {
+      id: `tm-${Date.now()}`,
+      person: resolvedClientName,
+      action: notes ? `Raw data uploaded: ${notes}` : 'Raw data uploaded by client',
+      date,
+      time,
+      status: project.status,
+    };
+
+    const updates: Partial<WorkProject> = {
+      clientUploadConfirmed: true,
+      clientUploadConfirmedAt: formatted,
+      timeline: [...project.timeline, newTimelineItem],
+    };
+
+    updateProject(workId, updates);
+
+    addActivity({
+      who: resolvedClientName,
+      action: 'Data uploaded',
+      what: `${resolvedClientName} uploaded data for "${project.name}"`,
+      entityType: 'work',
+      entityId: workId,
+      clientId: project.clientId,
+      editorId: project.assignedTo || undefined,
+    });
+
+    // Notify: Admin, and Assigned Editor if one exists
+    const notifs: (Omit<NotificationItem, 'id' | 'date' | 'time' | 'timestamp' | 'read'> & { id?: string })[] = [
+      {
+        id: `notif-${Date.now()}-adm`,
+        type: 'confirmation',
+        message: `${resolvedClientName} uploaded data for ${project.name}.`,
+        relatedWorkId: workId,
+        relatedClientId: project.clientId,
+        relatedEditorId: project.assignedTo || undefined,
+        recipientId: 'admin',
+        recipientRole: 'admin',
+        targetRole: 'admin',
+      },
+    ];
+
+    if (project.assignedTo) {
+      notifs.push({
+        id: `notif-${Date.now() + 1}-edt`,
+        type: 'confirmation',
+        message: `${resolvedClientName} uploaded data for ${project.name}.`,
+        relatedWorkId: workId,
+        relatedClientId: project.clientId,
+        relatedEditorId: project.assignedTo,
+        recipientId: project.assignedTo,
+        recipientRole: 'editor',
+        targetRole: 'editor',
+      });
+    }
+
+    addNotifications(notifs);
+    return true;
+  };
+
   const updateProjectReview = (
     workId: string,
     reviewStatus: string,
@@ -1478,11 +1490,13 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // CLIENT PAYMENTS
+  // ==========================================
+  // PAYMENT OPERATIONS
+  // ==========================================
   const addClientPayment = (
     paymentData: Omit<ClientPayment, 'id' | 'receiptNumber' | 'createdAt'>
   ): ClientPayment => {
-    const id = 'pay-c-' + Date.now();
+    const id = `pay-c-${Date.now()}`;
     const count = clientPayments.length + 1;
     const receiptNumber = `${settings.receiptPrefix}-${String(count).padStart(4, '0')}`;
     const newPayment: ClientPayment = {
@@ -1492,9 +1506,12 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString(),
     };
 
-    const client = clients.find((c) => c.id === paymentData.clientId);
-
     setClientPayments((prev) => [newPayment, ...prev]);
+    firestoreService.createPaymentDoc({ ...newPayment, paymentCategory: 'client' }).catch((err) => {
+      console.error('Failed to create client payment in Firestore:', err);
+    });
+
+    const client = clients.find((c) => c.id === paymentData.clientId);
 
     addActivity({
       who: 'Admin',
@@ -1528,26 +1545,20 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: new Date().toISOString(),
     };
 
-    setClientPayments((prev) =>
-      prev.map((p) => (p.id === id ? updatedPayment : p))
-    );
+    setClientPayments((prev) => prev.map((p) => (p.id === id ? updatedPayment : p)));
+    firestoreService.updatePaymentDoc(id, updates).catch((err) => {
+      console.error('Failed to update client payment in Firestore:', err);
+    });
 
     const client = clients.find((c) => c.id === updatedPayment.clientId);
 
     addActivity({
       who: 'Admin',
       action: 'Payment edited',
-      what: `Updated payment slip ${updatedPayment.receiptNumber} for ${client?.name || 'Client'} (Amount: ₹${updatedPayment.amount.toLocaleString()}, Type: ${updatedPayment.paymentType})`,
+      what: `Updated payment slip ${updatedPayment.receiptNumber} for ${client?.name || 'Client'}`,
       entityType: 'payment',
       entityId: id,
       clientId: updatedPayment.clientId,
-    });
-
-    addNotification({
-      type: 'payment',
-      message: `Client payment ${updatedPayment.receiptNumber} modified (₹${updatedPayment.amount.toLocaleString()})`,
-      relatedClientId: updatedPayment.clientId,
-      relatedPaymentId: id,
     });
 
     return updatedPayment;
@@ -1556,7 +1567,12 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteClientPayment = (id: string) => {
     const payment = clientPayments.find((p) => p.id === id);
     if (!payment) return;
+
     setClientPayments((prev) => prev.filter((p) => p.id !== id));
+    firestoreService.deletePaymentDoc(id).catch((err) => {
+      console.error('Failed to delete client payment in Firestore:', err);
+    });
+
     addActivity({
       who: 'Admin',
       action: 'Payment deleted',
@@ -1567,11 +1583,10 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  // EDITOR PAYMENTS
   const addEditorPayment = (
     paymentData: Omit<EditorPayment, 'id' | 'receiptNumber' | 'createdAt'>
   ): EditorPayment => {
-    const id = 'pay-e-' + Date.now();
+    const id = `pay-e-${Date.now()}`;
     const count = editorPayments.length + 1;
     const receiptNumber = `VID-EDT-2026-${String(count).padStart(4, '0')}`;
     const newPayment: EditorPayment = {
@@ -1581,9 +1596,12 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString(),
     };
 
-    const editor = editors.find((e) => e.id === paymentData.editorId);
-
     setEditorPayments((prev) => [newPayment, ...prev]);
+    firestoreService.createPaymentDoc({ ...newPayment, paymentCategory: 'editor' }).catch((err) => {
+      console.error('Failed to create editor payment in Firestore:', err);
+    });
+
+    const editor = editors.find((e) => e.id === paymentData.editorId);
 
     addActivity({
       who: 'Admin',
@@ -1596,7 +1614,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     addNotification({
       type: 'payment',
-      message: `Editor payment of ₹${paymentData.amount.toLocaleString()} recorded for ${editor?.name || 'Editor'}`,
+      message: `Editor payout of ₹${paymentData.amount.toLocaleString()} recorded for ${editor?.name || 'Editor'}`,
       relatedEditorId: paymentData.editorId,
       relatedPaymentId: id,
     });
@@ -1617,26 +1635,20 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: new Date().toISOString(),
     };
 
-    setEditorPayments((prev) =>
-      prev.map((p) => (p.id === id ? updatedPayment : p))
-    );
+    setEditorPayments((prev) => prev.map((p) => (p.id === id ? updatedPayment : p)));
+    firestoreService.updatePaymentDoc(id, updates).catch((err) => {
+      console.error('Failed to update editor payment in Firestore:', err);
+    });
 
     const editor = editors.find((e) => e.id === updatedPayment.editorId);
 
     addActivity({
       who: 'Admin',
       action: 'Payment edited',
-      what: `Updated editor payment ${updatedPayment.receiptNumber} for ${editor?.name || 'Editor'} (Amount: ₹${updatedPayment.amount.toLocaleString()}, Type: ${updatedPayment.paymentType})`,
+      what: `Updated editor payment ${updatedPayment.receiptNumber} for ${editor?.name || 'Editor'}`,
       entityType: 'payment',
       entityId: id,
       editorId: updatedPayment.editorId,
-    });
-
-    addNotification({
-      type: 'payment',
-      message: `Editor payout ${updatedPayment.receiptNumber} updated (₹${updatedPayment.amount.toLocaleString()})`,
-      relatedEditorId: updatedPayment.editorId,
-      relatedPaymentId: id,
     });
 
     return updatedPayment;
@@ -1645,7 +1657,12 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteEditorPayment = (id: string) => {
     const payment = editorPayments.find((p) => p.id === id);
     if (!payment) return;
+
     setEditorPayments((prev) => prev.filter((p) => p.id !== id));
+    firestoreService.deletePaymentDoc(id).catch((err) => {
+      console.error('Failed to delete editor payment in Firestore:', err);
+    });
+
     addActivity({
       who: 'Admin',
       action: 'Payment deleted',
@@ -1656,20 +1673,26 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  // EXPENSES
+  // ==========================================
+  // EXPENSE OPERATIONS
+  // ==========================================
   const addExpense = (expenseData: Omit<Expense, 'id' | 'createdAt'>): Expense => {
-    const id = 'exp-' + Date.now();
+    const id = `exp-${Date.now()}`;
     const newExpense: Expense = {
       ...expenseData,
       id,
       createdAt: new Date().toISOString(),
     };
+
     setExpenses((prev) => [newExpense, ...prev]);
+    firestoreService.createExpenseDoc(newExpense).catch((err) => {
+      console.error('Failed to create expense in Firestore:', err);
+    });
 
     addActivity({
       who: 'Admin',
       action: 'Expense recorded',
-      what: `Recorded expense "${expenseData.name}" of ₹${expenseData.amount.toLocaleString()} (${expenseData.category})`,
+      what: `Recorded expense "${expenseData.name || expenseData.title}" of ₹${expenseData.amount.toLocaleString()} (${expenseData.category})`,
       entityType: 'expense',
       entityId: id,
     });
@@ -1680,14 +1703,10 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteExpense = (id: string) => {
     const expense = expenses.find((e) => e.id === id);
     if (!expense) return;
-    setExpenses((prev) => {
-      const remaining = prev.filter((e) => e.id !== id);
-      try {
-        localStorage.setItem(LOCAL_STORAGE_KEY + '_expenses', JSON.stringify(remaining));
-      } catch (err) {
-        console.error('Failed to update localStorage for expenses', err);
-      }
-      return remaining;
+
+    setExpenses((prev) => prev.filter((e) => e.id !== id));
+    firestoreService.deleteExpenseDoc(id).catch((err) => {
+      console.error('Failed to delete expense in Firestore:', err);
     });
 
     const expenseTitle = expense.name || expense.title || 'Expense';
@@ -1700,23 +1719,42 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  // NOTIFICATIONS
+  // ==========================================
+  // NOTIFICATION MANAGEMENT
+  // ==========================================
   const markNotificationAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    firestoreService.updateNotificationDoc(id, { read: true }).catch((err) => {
+      console.error('Failed to update notification in Firestore:', err);
+    });
   };
 
   const markAllNotificationsAsRead = (filter?: { role?: 'admin' | 'client' | 'editor'; id?: string }) => {
     setNotifications((prev) =>
       prev.map((n) => {
+        let shouldMark = false;
         if (!filter || !filter.role || filter.role === 'admin') {
-          return { ...n, read: true };
+          if (n.recipientId === 'admin' || n.targetRole === 'admin' || (!n.recipientId && !n.targetRole)) {
+            shouldMark = true;
+          }
+        } else if (filter.role === 'editor' && filter.id) {
+          if (
+            n.recipientId === filter.id ||
+            (n.relatedEditorId === filter.id && (n.targetRole === 'editor' || n.recipientRole === 'editor'))
+          ) {
+            shouldMark = true;
+          }
+        } else if (filter.role === 'client' && filter.id) {
+          if (
+            n.recipientId === filter.id ||
+            (n.relatedClientId === filter.id && (n.targetRole === 'client' || n.recipientRole === 'client'))
+          ) {
+            shouldMark = true;
+          }
         }
-        if (filter.role === 'editor' && n.relatedEditorId === filter.id) {
-          return { ...n, read: true };
-        }
-        if (filter.role === 'client' && n.relatedClientId === filter.id) {
+
+        if (shouldMark && !n.read) {
+          firestoreService.updateNotificationDoc(n.id, { read: true }).catch(() => {});
           return { ...n, read: true };
         }
         return n;
@@ -1726,23 +1764,58 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteNotification = (id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
+    firestoreService.deleteNotificationDoc(id).catch((err) => {
+      console.error('Failed to delete notification in Firestore:', err);
+    });
   };
 
   const clearAllNotifications = (filter?: { role?: 'admin' | 'client' | 'editor'; id?: string }) => {
-    if (!filter || !filter.role || filter.role === 'admin') {
-      setNotifications([]);
-    } else if (filter.role === 'editor' && filter.id) {
-      setNotifications((prev) => prev.filter((n) => n.relatedEditorId !== filter.id));
-    } else if (filter.role === 'client' && filter.id) {
-      setNotifications((prev) => prev.filter((n) => n.relatedClientId !== filter.id));
-    } else {
-      setNotifications([]);
-    }
+    setNotifications((prev) => {
+      const remaining: NotificationItem[] = [];
+      prev.forEach((n) => {
+        let shouldRemove = false;
+        if (!filter || !filter.role || filter.role === 'admin') {
+          if (n.recipientId === 'admin' || n.targetRole === 'admin' || (!n.recipientId && !n.targetRole)) {
+            shouldRemove = true;
+          }
+        } else if (filter.role === 'editor' && filter.id) {
+          if (
+            n.recipientId === filter.id ||
+            (n.relatedEditorId === filter.id && (n.targetRole === 'editor' || n.recipientRole === 'editor'))
+          ) {
+            shouldRemove = true;
+          }
+        } else if (filter.role === 'client' && filter.id) {
+          if (
+            n.recipientId === filter.id ||
+            (n.relatedClientId === filter.id && (n.targetRole === 'client' || n.recipientRole === 'client'))
+          ) {
+            shouldRemove = true;
+          }
+        }
+
+        if (shouldRemove) {
+          firestoreService.deleteNotificationDoc(n.id).catch(() => {});
+        } else {
+          remaining.push(n);
+        }
+      });
+      return remaining;
+    });
   };
 
-  // SETTINGS
+  // ==========================================
+  // SETTINGS MANAGEMENT
+  // ==========================================
   const updateSettings = (newSettings: Partial<BusinessSettings>) => {
-    setSettings((prev) => ({ ...prev, ...newSettings }));
+    setSettings((prev) => {
+      const merged = { ...prev, ...newSettings };
+      firestoreService.saveSettingsDoc(merged).catch((err) => {
+        console.error('Failed to save settings to Firestore:', err);
+      });
+      return merged;
+    });
+
     addActivity({
       who: 'Admin',
       action: 'Settings updated',
@@ -1751,18 +1824,14 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  // FINANCIAL & STAT CALCULATIONS
+  // ==========================================
+  // FINANCIAL CALCULATIONS (Calculated from Firestore Data)
+  // ==========================================
   const getFinancialPulse = () => {
-    // Total Revenue = Sum of all client projects totalBilling
     const totalClientBilling = projects.reduce((acc, p) => acc + (p.totalBilling || 0), 0);
-
-    // Total Payments Received from clients
     const totalClientPaid = clientPayments.reduce((acc, p) => acc + (p.amount || 0), 0);
-
-    // Pending Payments = Total Revenue - Total Payments Received
     const clientPendingPayments = Math.max(0, totalClientBilling - totalClientPaid);
 
-    // Total Editor Cost = Sum of editor cost for assigned projects
     const totalEditorCost = projects.reduce((acc, p) => {
       if (p.workDoneBy === 'Assigned' && p.assignedTo) {
         return acc + (p.quantity * (p.editorRate || 0));
@@ -1770,22 +1839,12 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return acc;
     }, 0);
 
-    // Total Editor Payments Paid
     const totalEditorPaid = editorPayments.reduce((acc, p) => acc + (p.amount || 0), 0);
-
-    // Editor Pending Payments
     const editorPendingPayments = Math.max(0, totalEditorCost - totalEditorPaid);
-
-    // Other Expenses
     const otherExpenses = expenses.reduce((acc, e) => acc + (e.amount || 0), 0);
 
-    // Gross Profit = Total Revenue - Total Editor Cost
     const grossProfit = totalClientBilling - totalEditorCost;
-
-    // Net Profit = Total Revenue - Total Editor Cost - Other Expenses
     const netProfit = totalClientBilling - totalEditorCost - otherExpenses;
-
-    // Realized Profit = Total Client Received - Total Editor Paid - Other Expenses
     const realizedProfit = totalClientPaid - totalEditorPaid - otherExpenses;
 
     return {
@@ -1870,17 +1929,17 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
+  // Safe reset to empty database (does NOT restore demo data!)
   const resetToDefaultData = () => {
-    setClients(initialClients);
-    setEditors(initialEditors);
-    setProjects(initialProjects);
-    setClientPayments(initialClientPayments);
-    setEditorPayments(initialEditorPayments);
-    setExpenses(initialExpenses);
-    setActivities(initialActivities);
-    setNotifications(initialNotifications);
+    setClients([]);
+    setEditors([]);
+    setProjects([]);
+    setClientPayments([]);
+    setEditorPayments([]);
+    setExpenses([]);
+    setActivities([]);
+    setNotifications([]);
     setSettings(initialSettings);
-    localStorage.clear();
   };
 
   return (
@@ -1895,8 +1954,12 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activities,
         notifications,
         settings,
+        isLoading,
+        firestoreError,
         activeTab,
         setActiveTab,
+        searchQuery,
+        setSearchQuery,
         selectedClientId,
         setSelectedClientId,
         selectedEditorId,
@@ -1925,6 +1988,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         submitEditorCompletion,
         approveWork,
         submitClientRevision,
+        submitClientDataUpload,
         updateProjectReview,
         addClientPayment,
         updateClientPayment,
@@ -1934,6 +1998,8 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteEditorPayment,
         addExpense,
         deleteExpense,
+        addNotification,
+        addNotifications,
         markNotificationAsRead,
         markAllNotificationsAsRead,
         deleteNotification,

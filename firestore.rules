@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Connection testing
+    match /test/{testId} {
+      allow read, write: if true;
+    }
+
+    // Clients
+    match /clients/{clientId} {
+      allow get: if isValidId(clientId);
+      allow list: if true;
+      allow write: if isValidId(clientId);
+    }
+
+    // Editors
+    match /editors/{editorId} {
+      allow get: if isValidId(editorId);
+      allow list: if true;
+      allow write: if isValidId(editorId);
+    }
+
+    // Projects / Work Deliverables
+    match /projects/{projectId} {
+      allow get: if isValidId(projectId);
+      allow list: if true;
+      allow write: if isValidId(projectId);
+    }
+
+    // Payments (Client payments & Editor payouts)
+    match /payments/{paymentId} {
+      allow get: if isValidId(paymentId);
+      allow list: if true;
+      allow write: if isValidId(paymentId);
+    }
+
+    // Operational Expenses
+    match /expenses/{expenseId} {
+      allow get: if isValidId(expenseId);
+      allow list: if true;
+      allow write: if isValidId(expenseId);
+    }
+
+    // Notifications
+    match /notifications/{notificationId} {
+      allow get: if isValidId(notificationId);
+      allow list: if true;
+      allow write: if isValidId(notificationId);
+    }
+
+    // Activities / Audit Trail
+    match /activities/{activityId} {
+      allow get: if isValidId(activityId);
+      allow list: if true;
+      allow write: if isValidId(activityId);
+    }
+
+    // Revisions
+    match /revisions/{revisionId} {
+      allow get: if isValidId(revisionId);
+      allow list: if true;
+      allow write: if isValidId(revisionId);
+    }
+
+    // Application & Business Settings
+    match /settings/{settingsId} {
+      allow get: if isValidId(settingsId);
+      allow list: if true;
+      allow write: if isValidId(settingsId);
+    }
+
+    // Shared Portal Links
+    match /sharedLinks/{linkId} {
+      allow get: if isValidId(linkId);
+      allow list: if true;
+      allow write: if isValidId(linkId);
+    }
+  }
+}
+

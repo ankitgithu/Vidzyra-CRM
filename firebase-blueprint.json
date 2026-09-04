@@ -1,0 +1,247 @@
+{
+  "entities": {
+    "Client": {
+      "title": "Client",
+      "description": "Client profile in the Vidzyra CRM",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "email": { "type": "string", "maxLength": 200 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "whatsapp": { "type": "string", "maxLength": 50 },
+        "clientType": { "type": "string", "maxLength": 50 },
+        "defaultClientRate": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "portalToken": { "type": "string", "maxLength": 128 },
+        "portalStatus": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "name"]
+    },
+    "Editor": {
+      "title": "Editor",
+      "description": "Editor profile in the Vidzyra CRM",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "email": { "type": "string", "maxLength": 200 },
+        "contact": { "type": "string", "maxLength": 50 },
+        "editorRate": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "portalToken": { "type": "string", "maxLength": 128 },
+        "portalStatus": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "name"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Video production or design project in the Vidzyra CRM",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "clientId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "workType": { "type": "string", "maxLength": 100 },
+        "quantity": { "type": "number" },
+        "clientRate": { "type": "number" },
+        "totalBilling": { "type": "number" },
+        "workDoneBy": { "type": "string", "maxLength": 100 },
+        "assignedTo": { "type": "string", "maxLength": 128 },
+        "editorRate": { "type": "number" },
+        "dueDate": { "type": "string", "maxLength": 100 },
+        "notes": { "type": "string", "maxLength": 4000 },
+        "status": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "userDownloadLink": { "type": "string", "maxLength": 2000 },
+        "userUploadLink": { "type": "string", "maxLength": 2000 },
+        "clientDownloadLink": { "type": "string", "maxLength": 2000 },
+        "clientUploadLink": { "type": "string", "maxLength": 2000 },
+        "editorDownloadConfirmed": { "type": "boolean" },
+        "editorUploadConfirmed": { "type": "boolean" },
+        "clientUploadConfirmed": { "type": "boolean" },
+        "clientDownloadConfirmed": { "type": "boolean" },
+        "revisionCount": { "type": "number" },
+        "revisionStatus": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "clientId", "name", "status"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Payment transaction record for client billing or editor payouts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "receiptNumber": { "type": "string", "maxLength": 100 },
+        "paymentCategory": { "type": "string", "maxLength": 50 },
+        "clientId": { "type": "string", "maxLength": 128 },
+        "editorId": { "type": "string", "maxLength": 128 },
+        "workId": { "type": "string", "maxLength": 128 },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "maxLength": 100 },
+        "paymentMethod": { "type": "string", "maxLength": 100 },
+        "referenceNumber": { "type": "string", "maxLength": 100 },
+        "paymentType": { "type": "string", "maxLength": 50 },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "amount", "paymentCategory"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Operational expense record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "title": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "maxLength": 100 },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "maxLength": 100 },
+        "paymentMethod": { "type": "string", "maxLength": 100 },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "amount"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Alert notification item for Admin, Clients, or Editors",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "maxLength": 50 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "recipientId": { "type": "string", "maxLength": 128 },
+        "recipientRole": { "type": "string", "maxLength": 50 },
+        "relatedClientId": { "type": "string", "maxLength": 128 },
+        "relatedEditorId": { "type": "string", "maxLength": 128 },
+        "relatedWorkId": { "type": "string", "maxLength": 128 },
+        "relatedPaymentId": { "type": "string", "maxLength": 128 },
+        "targetRole": { "type": "string", "maxLength": 50 },
+        "date": { "type": "string", "maxLength": 100 },
+        "time": { "type": "string", "maxLength": 50 },
+        "timestamp": { "type": "number" },
+        "read": { "type": "boolean" }
+      },
+      "required": ["id", "message", "read"]
+    },
+    "Activity": {
+      "title": "Activity",
+      "description": "Audit trail activity log entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "who": { "type": "string", "maxLength": 200 },
+        "action": { "type": "string", "maxLength": 200 },
+        "what": { "type": "string", "maxLength": 1000 },
+        "when": { "type": "string", "maxLength": 100 },
+        "timestamp": { "type": "number" },
+        "entityType": { "type": "string", "maxLength": 50 },
+        "entityId": { "type": "string", "maxLength": 128 },
+        "clientId": { "type": "string", "maxLength": 128 },
+        "editorId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "action", "what"]
+    },
+    "Revision": {
+      "title": "Revision",
+      "description": "Revision tracking request",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "projectId": { "type": "string", "maxLength": 128 },
+        "workId": { "type": "string", "maxLength": 128 },
+        "clientId": { "type": "string", "maxLength": 128 },
+        "editorId": { "type": "string", "maxLength": 128 },
+        "revisionDetails": { "type": "string", "maxLength": 2000 },
+        "timecode": { "type": "string", "maxLength": 100 },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "status": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "projectId"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Application settings and business configurations",
+      "type": "object",
+      "properties": {
+        "businessName": { "type": "string", "maxLength": 200 },
+        "tagline": { "type": "string", "maxLength": 300 },
+        "contactEmail": { "type": "string", "maxLength": 200 },
+        "contactPhone": { "type": "string", "maxLength": 50 },
+        "whatsappNumber": { "type": "string", "maxLength": 50 },
+        "currency": { "type": "string", "maxLength": 10 },
+        "currencySymbol": { "type": "string", "maxLength": 10 },
+        "receiptPrefix": { "type": "string", "maxLength": 50 },
+        "cloudFolderRoot": { "type": "string", "maxLength": 500 },
+        "portalWelcomeText": { "type": "string", "maxLength": 1000 }
+      },
+      "required": ["businessName"]
+    },
+    "SharedLink": {
+      "title": "SharedLink",
+      "description": "Permanent tokenized link for client and editor portals",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "token": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "maxLength": 50 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "expiresAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "token", "type"]
+    }
+  },
+  "firestore": {
+    "/clients/{clientId}": {
+      "schema": { "$ref": "#/entities/Client" },
+      "description": "Collection of all agency clients"
+    },
+    "/editors/{editorId}": {
+      "schema": { "$ref": "#/entities/Editor" },
+      "description": "Collection of all agency editors"
+    },
+    "/projects/{projectId}": {
+      "schema": { "$ref": "#/entities/Project" },
+      "description": "Collection of all work and project deliverables"
+    },
+    "/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/Payment" },
+      "description": "Collection of client billing and editor payments"
+    },
+    "/expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/Expense" },
+      "description": "Collection of operational business expenses"
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "Collection of system and workflow notifications"
+    },
+    "/activities/{activityId}": {
+      "schema": { "$ref": "#/entities/Activity" },
+      "description": "Collection of audit trail activity logs"
+    },
+    "/revisions/{revisionId}": {
+      "schema": { "$ref": "#/entities/Revision" },
+      "description": "Collection of revision requests"
+    },
+    "/settings/{settingsId}": {
+      "schema": { "$ref": "#/entities/Settings" },
+      "description": "Global application and business settings"
+    },
+    "/sharedLinks/{linkId}": {
+      "schema": { "$ref": "#/entities/SharedLink" },
+      "description": "Collection of shared portal authorization tokens"
+    }
+  }
+}

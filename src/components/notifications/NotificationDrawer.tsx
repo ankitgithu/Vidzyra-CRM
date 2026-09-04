@@ -57,20 +57,48 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   };
 
   const displayedNotifications = useMemo(() => {
-    if (filterRole === 'editor' && currentEntityId) {
-      return notifications.filter(
-        (n) => n.relatedEditorId === currentEntityId && n.targetRole !== 'client'
-      );
+    if (filterRole === 'editor') {
+      if (!currentEntityId) return [];
+      return notifications.filter((n) => {
+        // Direct recipient match
+        if (n.recipientId === currentEntityId) return true;
+        // Role match
+        if (n.targetRole === 'editor' && n.relatedEditorId === currentEntityId) return true;
+        if (n.recipientRole === 'editor' && n.relatedEditorId === currentEntityId) return true;
+        return false;
+      });
     }
-    if (filterRole === 'client' && currentEntityId) {
-      return notifications.filter(
-        (n) => n.relatedClientId === currentEntityId && n.targetRole !== 'editor'
-      );
+
+    if (filterRole === 'client') {
+      if (!currentEntityId) return [];
+      return notifications.filter((n) => {
+        // Direct recipient match
+        if (n.recipientId === currentEntityId) return true;
+        // Role match
+        if (n.targetRole === 'client' && n.relatedClientId === currentEntityId) return true;
+        if (n.recipientRole === 'client' && n.relatedClientId === currentEntityId) return true;
+        return false;
+      });
     }
+
     // Admin mode
-    return notifications.filter(
-      (n) => (n.targetRole !== 'client' && n.targetRole !== 'editor') || n.targetRole === 'admin' || !n.targetRole
-    );
+    return notifications.filter((n) => {
+      // Must not belong to a client or editor exclusively
+      if (n.recipientId && n.recipientId !== 'admin') {
+        if (
+          n.recipientRole === 'client' ||
+          n.recipientRole === 'editor' ||
+          n.targetRole === 'client' ||
+          n.targetRole === 'editor'
+        ) {
+          return false;
+        }
+      }
+      if (n.targetRole === 'client' || n.targetRole === 'editor') {
+        return false;
+      }
+      return true;
+    });
   }, [notifications, filterRole, currentEntityId]);
 
   if (!isOpen) return null;

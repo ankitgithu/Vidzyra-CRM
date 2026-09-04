@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Database, Download, Upload, RefreshCw, AlertTriangle, CheckCircle2, ShieldAlert } from 'lucide-react';
+import React from 'react';
+import { Database, Download, Cloud, CheckCircle2 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
 
 export const DataCenter: React.FC = () => {
@@ -12,15 +12,12 @@ export const DataCenter: React.FC = () => {
     expenses,
     activities,
     settings,
-    resetToDemoData,
+    isLoading,
   } = useCrm();
-
-  const [confirmReset, setConfirmReset] = useState(false);
-  const [resetSuccess, setResetSuccess] = useState(false);
 
   const handleExportJson = () => {
     const fullDb = {
-      version: '1.0',
+      version: '2.0-firestore',
       exportedAt: new Date().toISOString(),
       settings,
       clients,
@@ -36,16 +33,9 @@ export const DataCenter: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `vidzyra-crm-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `vidzyra-crm-firestore-backup-${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  };
-
-  const handleReset = () => {
-    resetToDemoData();
-    setConfirmReset(false);
-    setResetSuccess(true);
-    setTimeout(() => setResetSuccess(false), 3000);
   };
 
   return (
@@ -53,8 +43,46 @@ export const DataCenter: React.FC = () => {
       <div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Data Center &amp; Storage</h1>
         <p className="text-sm text-slate-500 mt-0.5">
-          Local database snapshots, backup JSON exports, and system reset controls.
+          Cloud Firestore database synchronization, snapshots, and backup JSON exports.
         </p>
+      </div>
+
+      {/* Cloud Database Status card */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
+              <Cloud className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-slate-900 text-sm">Firebase Firestore Cloud Database</h3>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  {isLoading ? 'Connecting...' : 'Live Connected'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Real-time cloud database persistence with zero cold-starts and live synchronization.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-xs">
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+            <span className="text-slate-400 block text-[10px] font-medium uppercase">Source of Truth</span>
+            <span className="font-semibold text-slate-800 mt-0.5 block">Firebase Firestore (Single Source)</span>
+          </div>
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+            <span className="text-slate-400 block text-[10px] font-medium uppercase">Pricing Plan</span>
+            <span className="font-semibold text-slate-800 mt-0.5 block">Free Spark Plan (Optimized Reads/Writes)</span>
+          </div>
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+            <span className="text-slate-400 block text-[10px] font-medium uppercase">Sync Mode</span>
+            <span className="font-semibold text-slate-800 mt-0.5 block">Multi-Tab Real-time Listeners</span>
+          </div>
+        </div>
       </div>
 
       {/* Database stats overview */}
@@ -95,71 +123,18 @@ export const DataCenter: React.FC = () => {
           <div>
             <h3 className="font-bold text-slate-900 text-sm">Full Database Snapshot (JSON)</h3>
             <p className="text-xs text-slate-500">
-              Export all client records, project links, payment history, activity logs, and settings to a JSON file.
+              Export all client records, project links, payment history, activity logs, and settings to a local JSON backup file.
             </p>
           </div>
         </div>
 
         <button
           onClick={handleExportJson}
-          className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition"
+          className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer"
         >
           <Download className="w-4 h-4" />
           Download JSON Database Snapshot
         </button>
-      </div>
-
-      {/* Demo Data Reset */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-        <div className="flex items-center space-x-3">
-          <div className="p-2.5 bg-rose-50 text-rose-600 rounded-xl">
-            <RefreshCw className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="font-bold text-slate-900 text-sm">Restore Demo Seed Data</h3>
-            <p className="text-xs text-slate-500">
-              Reset your database to Vidzyra's rich initial demo state (clients, editors, projects, receipts, and links).
-            </p>
-          </div>
-        </div>
-
-        {resetSuccess && (
-          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-medium flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            Demo data successfully restored!
-          </div>
-        )}
-
-        {confirmReset ? (
-          <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2 text-xs">
-            <p className="font-bold text-rose-900 flex items-center gap-1.5">
-              <ShieldAlert className="w-4 h-4 text-rose-600" />
-              Are you sure? This will replace your local storage database with initial demo data.
-            </p>
-            <div className="flex items-center space-x-2 pt-1">
-              <button
-                onClick={handleReset}
-                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold"
-              >
-                Yes, Restore Demo Data
-              </button>
-              <button
-                onClick={() => setConfirmReset(false)}
-                className="px-4 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg font-medium"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button
-            onClick={() => setConfirmReset(true)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-rose-300 hover:bg-rose-50 text-rose-700 rounded-xl text-xs font-semibold transition"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Reset Database to Demo Seed
-          </button>
-        )}
       </div>
     </div>
   );

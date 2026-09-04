@@ -244,6 +244,8 @@ export interface NotificationItem {
   id: string;
   type: NotificationType;
   message: string;
+  recipientId?: string; // Specific user or admin ID for strict routing
+  recipientRole?: 'admin' | 'client' | 'editor' | 'all';
   relatedClientId?: string;
   relatedEditorId?: string;
   relatedWorkId?: string;

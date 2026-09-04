@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Bell,
   Plus,
@@ -32,7 +32,25 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { notifications, clients, editors, setActivePortalUser } = useCrm();
   const [showPortalPicker, setShowPortalPicker] = useState(false);
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const unreadCount = useMemo(() => {
+    return notifications.filter((n) => {
+      if (n.read) return false;
+      if (n.recipientId && n.recipientId !== 'admin') {
+        if (
+          n.recipientRole === 'client' ||
+          n.recipientRole === 'editor' ||
+          n.targetRole === 'client' ||
+          n.targetRole === 'editor'
+        ) {
+          return false;
+        }
+      }
+      if (n.targetRole === 'client' || n.targetRole === 'editor') {
+        return false;
+      }
+      return true;
+    }).length;
+  }, [notifications]);
 
   return (
     <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between z-10 sticky top-0">

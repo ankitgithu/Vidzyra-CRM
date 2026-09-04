@@ -53,7 +53,13 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
   const [showNotifications, setShowNotifications] = useState(false);
 
   const editorNotifications = useMemo(
-    () => notifications.filter((n) => n.relatedEditorId === editorId && n.targetRole !== 'client'),
+    () =>
+      notifications.filter((n) => {
+        if (n.recipientId === editorId) return true;
+        if (n.targetRole === 'editor' && n.relatedEditorId === editorId) return true;
+        if (n.recipientRole === 'editor' && n.relatedEditorId === editorId) return true;
+        return false;
+      }),
     [notifications, editorId]
   );
   const unreadEditorNotifs = editorNotifications.filter((n) => !n.read).length;
