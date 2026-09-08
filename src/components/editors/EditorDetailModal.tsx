@@ -59,7 +59,10 @@ export const EditorDetailModal: React.FC<EditorDetailModalProps> = ({
   if (!editor) return null;
 
   const stats = getEditorStats(editor.id);
-  const assignedProjects = projects.filter((p) => p.assignedTo === editor.id && p.workDoneBy === 'Assigned');
+  const assignedProjects = projects.filter((p) => {
+    const assignedEditorId = p.assignedTo || (p as any).editorId || (p as any).assignedEditorId;
+    return Boolean(assignedEditorId && assignedEditorId === editor.id);
+  });
   const payments = editorPayments.filter((p) => p.editorId === editor.id);
   const editorActivities = activities.filter((a) => a.editorId === editor.id);
 

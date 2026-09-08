@@ -190,7 +190,7 @@ export const Reports: React.FC = () => {
           id: ed.id,
           name: ed.name,
           email: ed.email,
-          phone: ed.phone,
+          phone: ed.contact || (ed as any).phone || '',
           totalAssigned: assignedProjects.length,
           completedCount: completedProjects.length,
           pendingCount: pendingProjects.length,

@@ -9,6 +9,7 @@ import {
   LogOut,
   FolderDown,
   FolderUp,
+  Folder,
   CreditCard,
   Briefcase,
   AlertCircle,
@@ -20,6 +21,7 @@ import { ProjectStatus } from '../../types';
 import { ReceiptData } from '../../utils/receiptGenerator';
 import { PaymentReceiptModal } from '../payments/PaymentReceiptModal';
 import { NotificationDrawer } from '../notifications/NotificationDrawer';
+import { getProjectDriveFolderUrl } from '../../utils/driveUtils';
 import { ProjectChatModal } from '../chat/ProjectChatModal';
 
 interface ClientPortalViewProps {
@@ -43,10 +45,12 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
     submitClientDataUpload,
     notifications,
     settings,
+    chatMessages,
   } = useCrm();
 
   const client = clients.find((c) => c.id === clientId);
 
+  const [activeChatProjectId, setActiveChatProjectId] = useState<string | null>(null);
   const [revisionWorkId, setRevisionWorkId] = useState<string | null>(null);
   const [revisionNotes, setRevisionNotes] = useState('');
   const [revisionTimecode, setRevisionTimecode] = useState('');
@@ -55,7 +59,6 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptData | null>(null);
-  const [chatProjectId, setChatProjectId] = useState<string | null>(null);
 
   const clientNotifications = useMemo(
     () =>
@@ -119,14 +122,17 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
   }
 
   const stats = getClientStats(client.id);
-  const clientProjects = projects.filter((p) => p.clientId === client.id);
+  const clientProjects = projects.filter((p) => {
+    const projectClientId = p.clientId || (p as any).client_id || (p as any).client?.id;
+    return Boolean(projectClientId && projectClientId === client.id);
+  });
   const payments = clientPayments.filter((p) => p.clientId === client.id);
 
-  const handleApprove = async (workId: string) => {
+  const handleApprove = (workId: string) => {
     if (approvingId) return;
     setApprovingId(workId);
     try {
-      await approveWork(workId, client.name);
+      approveWork(workId, client.name);
       setToastMessage('Deliverable approved successfully. Admin and assigned Editor have been notified.');
       setTimeout(() => setToastMessage(null), 4500);
     } finally {
@@ -365,78 +371,77 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     )}
                   </div>
 
-                  {/* 4-Link Cloud Buttons for Client */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* Raw Footage link */}
-                    {p.userDownloadLink ? (
-                      <a
-                        href={p.userDownloadLink}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={() => {
-                          submitClientDataUpload({ workId: p.id, clientName: client.name });
-                          setToastMessage('Raw data upload notification sent to your editor and admin.');
-                          setTimeout(() => setToastMessage(null), 4000);
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-semibold transition"
-                        title="Upload your raw footage and assets here"
-                      >
-                        <FolderUp className="w-3.5 h-3.5 text-indigo-600" />
-                        Upload Raw Footage
-                      </a>
-                    ) : (
-                      <span className="text-[11px] text-slate-400 italic px-2">Raw link pending</span>
-                    )}
+                  {/* Project Files Section (Single Google Drive Folder) & Review Controls */}
+                  <div className="flex flex-wrap items-center gap-3">
+                    {(() => {
+                      const folderUrl = getProjectDriveFolderUrl(p);
+                      return (
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider hidden sm:inline">
+                            Project Files:
+                          </span>
+                          {folderUrl ? (
+                            <div className="flex items-center gap-2">
+                              <a
+                                id={`btn-client-open-folder-${p.id}`}
+                                href={folderUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-2xs transition"
+                                title="Open project Google Drive folder"
+                              >
+                                <Folder className="w-3.5 h-3.5" />
+                                Open Project Folder
+                              </a>
+                              <a
+                                id={`btn-client-upload-data-${p.id}`}
+                                href={folderUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={() => {
+                                  submitClientDataUpload({ workId: p.id, clientName: client.name });
+                                  setToastMessage(`Upload notification sent to Admin and Editor for "${p.name}".`);
+                                  setTimeout(() => setToastMessage(null), 4000);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs font-semibold transition"
+                                title="Upload raw footage and assets to project folder"
+                              >
+                                <FolderUp className="w-3.5 h-3.5 text-indigo-600" />
+                                Upload Data
+                              </a>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-slate-400 italic px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg">
+                              Files not yet available
+                            </span>
+                          )}
 
-                    {/* Final Deliverables download */}
-                    {p.userUploadLink ? (
-                      <a
-                        href={p.userUploadLink}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-2xs transition"
-                        title="Download final exported videos"
-                      >
-                        <FolderDown className="w-3.5 h-3.5" />
-                        Download Final Videos
-                      </a>
-                    ) : (
-                      <span className="text-[11px] text-slate-400 italic px-2">Render in progress</span>
-                    )}
-
-                    {/* Client–Editor Project Chat Button */}
-                    {p.assignedTo && p.workDoneBy !== 'Self' ? (
-                      <button
-                        id={`btn-client-chat-${p.id}`}
-                        onClick={() => setChatProjectId(p.id)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                          p.status === 'Approved' || p.reviewStatus === 'Approved'
-                            ? 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
-                            : p.chatDisabled
-                            ? 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
-                            : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 shadow-2xs'
-                        }`}
-                        title={
-                          p.status === 'Approved' || p.reviewStatus === 'Approved'
-                            ? 'Chat closed (project approved)'
-                            : p.chatDisabled
-                            ? 'Chat disabled by administrator'
-                            : 'Chat with your assigned video editor'
-                        }
-                      >
-                        <MessageSquare className="w-3.5 h-3.5" />
-                        {p.status === 'Approved' || p.reviewStatus === 'Approved' ? 'Chat (Closed)' : 'Chat with Editor'}
-                      </button>
-                    ) : (
-                      <button
-                        disabled
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-400 rounded-lg text-xs font-medium cursor-not-allowed opacity-75"
-                        title="Chat will become available once an editor is assigned to this deliverable"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5" />
-                        Chat (Pending Editor)
-                      </button>
-                    )}
+                          {/* Live Project Chat Button */}
+                          <button
+                            id={`btn-client-chat-${p.id}`}
+                            type="button"
+                            onClick={() => setActiveChatProjectId(p.id)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold shadow-2xs transition cursor-pointer"
+                            title={p.assignedTo ? 'Live chat with assigned editor' : 'Chat available once editor is assigned'}
+                          >
+                            <MessageSquare className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>Chat</span>
+                            {(() => {
+                              const projectMsgs = chatMessages.filter(
+                                (m) =>
+                                  (m.projectId === p.id || m.workId === p.id) &&
+                                  (m.status === 'APPROVED' || m.senderId === client.id)
+                              );
+                              return projectMsgs.length > 0 ? (
+                                <span className="px-1.5 py-0.2 bg-indigo-600 text-white rounded-full text-[10px] font-bold">
+                                  {projectMsgs.length}
+                                </span>
+                              ) : null;
+                            })()}
+                          </button>
+                        </div>
+                      );
+                    })()}
 
                     {/* Review Controls */}
                     {p.status === 'Approved' || p.reviewStatus === 'Approved' ? (
@@ -679,15 +684,14 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
         receiptData={selectedReceipt}
       />
 
-      {/* Client–Editor Project Chat Modal */}
-      {chatProjectId && (
+      {/* Project Live Chat Modal */}
+      {activeChatProjectId && (
         <ProjectChatModal
-          isOpen={Boolean(chatProjectId)}
-          onClose={() => setChatProjectId(null)}
-          projectId={chatProjectId}
-          currentRole="client"
+          projectId={activeChatProjectId}
+          viewerRole="client"
           currentUserId={client.id}
           currentUserName={client.name}
+          onClose={() => setActiveChatProjectId(null)}
         />
       )}
     </div>

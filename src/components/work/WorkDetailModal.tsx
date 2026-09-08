@@ -8,7 +8,7 @@ import {
   Edit2,
   Trash2,
   Clock,
-  Link as LinkIcon,
+  Folder,
   CheckCircle2,
   AlertTriangle,
   FileCheck,
@@ -17,7 +17,8 @@ import {
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
 import { ProjectStatus } from '../../types';
-import { ProjectChatModal } from '../chat/ProjectChatModal';
+import { getProjectDriveFolderUrl } from '../../utils/driveUtils';
+import { ProjectChatBox } from '../chat/ProjectChatBox';
 
 interface WorkDetailModalProps {
   isOpen: boolean;
@@ -41,20 +42,30 @@ export const WorkDetailModal: React.FC<WorkDetailModalProps> = ({
     activities,
     updateProject,
     deleteProject,
+    chatMessages,
+    settings,
   } = useCrm();
 
+  const [activeTab, setActiveTab] = useState<'details' | 'chat'>('details');
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showChatModal, setShowChatModal] = useState(false);
 
   if (!isOpen || !workId) return null;
 
   const project = projects.find((p) => p.id === workId);
   if (!project) return null;
 
-  const client = clients.find((c) => c.id === project.clientId);
-  const editor = project.assignedTo ? editors.find((e) => e.id === project.assignedTo) : null;
+  const client = clients.find((c) => c.id === project.clientId || c.id === (project as any).client_id);
+  const assignedEditorId = project.assignedTo || project.editorId || project.assignedEditorId;
+  const editor = assignedEditorId ? editors.find((e) => e.id === assignedEditorId) : null;
   const projectActivities = activities.filter((a) => a.workId === project.id);
+
+  const projectChatMessages = chatMessages.filter(
+    (m) => m.projectId === project.id || m.workId === project.id
+  );
+  const pendingChatMessages = projectChatMessages.filter(
+    (m) => m.status === 'PENDING_ADMIN_REVIEW'
+  );
 
   const editorCost =
     project.editorCost ??
@@ -112,15 +123,6 @@ export const WorkDetailModal: React.FC<WorkDetailModalProps> = ({
           </div>
           <div className="flex items-center space-x-2">
             <button
-              id={`btn-admin-work-chat-${project.id}`}
-              onClick={() => setShowChatModal(true)}
-              className="px-3 py-1.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
-              title="Open Project Chat monitor"
-            >
-              <MessageSquare className="w-3.5 h-3.5" />
-              Chat
-            </button>
-            <button
               onClick={() => onEditWork(project.id)}
               className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
             >
@@ -136,8 +138,58 @@ export const WorkDetailModal: React.FC<WorkDetailModalProps> = ({
           </div>
         </div>
 
+        {/* Navigation Tabs */}
+        <div className="px-6 border-b border-slate-200 bg-white flex items-center space-x-4">
+          <button
+            id="tab-work-details"
+            type="button"
+            onClick={() => setActiveTab('details')}
+            className={`py-3 text-xs font-bold border-b-2 flex items-center gap-1.5 transition cursor-pointer ${
+              activeTab === 'details'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Briefcase className="w-3.5 h-3.5" />
+            <span>Project Details &amp; Files</span>
+          </button>
+
+          <button
+            id="tab-work-chat"
+            type="button"
+            onClick={() => setActiveTab('chat')}
+            className={`py-3 text-xs font-bold border-b-2 flex items-center gap-1.5 transition cursor-pointer ${
+              activeTab === 'chat'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            <span>Live Chat &amp; Moderation</span>
+            {pendingChatMessages.length > 0 ? (
+              <span className="px-1.5 py-0.2 bg-amber-500 text-white rounded-full text-[10px] font-bold animate-pulse">
+                {pendingChatMessages.length} pending
+              </span>
+            ) : projectChatMessages.length > 0 ? (
+              <span className="px-1.5 py-0.2 bg-slate-200 text-slate-700 rounded-full text-[10px] font-semibold">
+                {projectChatMessages.length}
+              </span>
+            ) : null}
+          </button>
+        </div>
+
         {/* Content Body */}
-        <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
+        {activeTab === 'chat' ? (
+          <div className="p-4 flex-1 overflow-hidden flex flex-col bg-slate-50/50">
+            <ProjectChatBox
+              projectId={project.id}
+              viewerRole="admin"
+              currentUserId="admin"
+              currentUserName={settings.businessName || 'Admin'}
+            />
+          </div>
+        ) : (
+          <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
           {/* Status & Due Date Pill Bar */}
           <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center space-x-2">
@@ -207,94 +259,96 @@ export const WorkDetailModal: React.FC<WorkDetailModalProps> = ({
             </div>
           </div>
 
-          {/* The Four-Link System Card */}
-          <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <LinkIcon className="w-4 h-4 text-indigo-600" />
-                <h3 className="font-bold text-slate-900 text-sm">Four-Link Cloud Delivery Pipeline</h3>
-              </div>
-              <button
-                onClick={() => onEditLinks(project.id)}
-                className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold transition"
-              >
-                Edit Links
-              </button>
-            </div>
-
-            <div className="space-y-2.5 pt-1">
-              {[
-                {
-                  label: '1. User Download Link',
-                  sub: "Client's Raw Footage Folder",
-                  url: project.userDownloadLink,
-                  id: 'userDownload',
-                },
-                {
-                  label: '2. User Upload Link',
-                  sub: "Client's Final Deliverables Folder",
-                  url: project.userUploadLink,
-                  id: 'userUpload',
-                },
-                {
-                  label: '3. Client Download Link',
-                  sub: "Editor's Raw Footage Folder",
-                  url: project.clientDownloadLink,
-                  id: 'clientDownload',
-                },
-                {
-                  label: '4. Client Upload Link',
-                  sub: "Editor's Render Upload Submission Folder",
-                  url: project.clientUploadLink,
-                  id: 'clientUpload',
-                },
-              ].map((link) => (
-                <div
-                  key={link.id}
-                  className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between gap-3"
-                >
-                  <div className="flex-1 min-w-0">
-                    <span className="font-bold text-slate-800 block text-[11px]">{link.label}</span>
-                    <span className="text-slate-500 text-[10px] block truncate">
-                      {link.sub} • {link.url || <em className="text-slate-400">Not configured yet</em>}
-                    </span>
+          {/* Project Drive Folder Card (Single Shared Folder) */}
+          {(() => {
+            const canonicalDriveFolder = getProjectDriveFolderUrl(project);
+            return (
+              <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Folder className="w-4 h-4 text-indigo-600" />
+                    <h3 className="font-bold text-slate-900 text-sm">Project Drive Folder</h3>
                   </div>
+                  <button
+                    id="btn-edit-drive-folder"
+                    onClick={() => onEditLinks(project.id)}
+                    className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    {canonicalDriveFolder ? 'Edit / Replace Folder' : 'Add Drive Folder'}
+                  </button>
+                </div>
 
-                  {link.url ? (
-                    <div className="flex items-center space-x-1.5 flex-shrink-0">
-                      <button
-                        onClick={() => handleCopy(link.url, link.id)}
-                        className="p-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-md transition"
-                        title="Copy Link"
-                      >
-                        {copiedLink === link.id ? (
-                          <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                      <a
-                        href={link.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="p-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition"
-                        title="Open in new tab"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                  {canonicalDriveFolder ? (
+                    <div className="space-y-3">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                          Canonical Google Drive Folder URL
+                        </span>
+                        <a
+                          href={canonicalDriveFolder}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-mono text-xs text-indigo-600 hover:text-indigo-800 hover:underline break-all block mt-0.5"
+                        >
+                          {canonicalDriveFolder}
+                        </a>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-200/80">
+                        <a
+                          id="btn-open-drive-folder"
+                          href={canonicalDriveFolder}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-2xs transition"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          Open Folder
+                        </a>
+
+                        <button
+                          id="btn-copy-drive-folder"
+                          onClick={() => handleCopy(canonicalDriveFolder, 'driveFolder')}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold shadow-2xs transition cursor-pointer"
+                        >
+                          {copiedLink === 'driveFolder' ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              <span className="text-emerald-700">Copied Link</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>Copy Link</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      <p className="text-[11px] text-slate-500 pt-1 leading-relaxed">
+                        <span className="font-semibold text-slate-700">Shared Project Directory:</span> Client and Editor use this exact folder. Suggested subfolders: Client Raw Files • References • Edited Videos • Revisions • Final Deliverables
+                      </p>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => onEditLinks(project.id)}
-                      className="text-xs text-indigo-600 font-semibold hover:underline"
-                    >
-                      Set Link
-                    </button>
+                    <div className="text-center py-4 space-y-2">
+                      <p className="text-xs text-slate-500">
+                        No Google Drive folder URL configured yet for this project.
+                      </p>
+                      <button
+                        onClick={() => onEditLinks(project.id)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition cursor-pointer"
+                      >
+                        <Folder className="w-3.5 h-3.5" />
+                        Add Drive Folder URL
+                      </button>
+                    </div>
                   )}
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
+            );
+          })()}
 
           {/* Client Review & Feedback */}
           {project.reviewStatus && (
@@ -396,6 +450,7 @@ export const WorkDetailModal: React.FC<WorkDetailModalProps> = ({
             </button>
           </div>
         </div>
+        )}
       </div>
 
       {/* Delete Work / Project Confirmation Modal */}
@@ -446,18 +501,6 @@ export const WorkDetailModal: React.FC<WorkDetailModalProps> = ({
             </div>
           </div>
         </div>
-      )}
-
-      {/* Project Chat Modal (Admin Monitor) */}
-      {showChatModal && (
-        <ProjectChatModal
-          isOpen={showChatModal}
-          onClose={() => setShowChatModal(false)}
-          projectId={project.id}
-          currentRole="admin"
-          currentUserId="admin"
-          currentUserName="Vidzyra Admin"
-        />
       )}
     </div>
   );

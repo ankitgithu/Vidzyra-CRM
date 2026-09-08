@@ -16,13 +16,14 @@ import { WorkFormModal } from './components/work/WorkFormModal';
 import { PaymentList } from './components/payments/PaymentList';
 import { PaymentFormModal } from './components/payments/PaymentFormModal';
 import { Reports } from './components/reports/Reports';
+import { CalendarMain } from './components/calendar/CalendarMain';
 import { DataCenter } from './components/datacenter/DataCenter';
 import { Settings } from './components/settings/Settings';
-import { ProjectChatManager } from './components/chat/ProjectChatManager';
 import { ClientPortalView } from './components/portal/ClientPortalView';
 import { EditorPortalView } from './components/portal/EditorPortalView';
 import { EditLinkModal } from './components/modals/EditLinkModal';
 import { SharePortalModal } from './components/modals/SharePortalModal';
+import { GeminiChatModal } from './components/chat/GeminiChatModal';
 import { Client, Editor, WorkProject } from './types';
 import { AlertCircle } from 'lucide-react';
 import { getSharedPortalSession } from './utils/portalAuth';
@@ -44,6 +45,7 @@ const MainApp: React.FC = () => {
 
   // Modals state
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isGeminiChatOpen, setIsGeminiChatOpen] = useState(false);
 
   // Client Modals
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -221,6 +223,7 @@ const MainApp: React.FC = () => {
           onOpenNewClient={handleOpenNewClient}
           onOpenNewPayment={() => handleOpenNewPayment('Client')}
           onToggleNotifications={() => setIsNotificationsOpen(true)}
+          onOpenGeminiChat={() => setIsGeminiChatOpen(true)}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
         />
@@ -233,6 +236,7 @@ const MainApp: React.FC = () => {
               onOpenClient={handleOpenClientDetail}
               onOpenEditor={handleOpenEditorDetail}
               onOpenEditLink={handleOpenEditLinks}
+              onOpenGeminiChat={() => setIsGeminiChatOpen(true)}
             />
           )}
 
@@ -267,13 +271,13 @@ const MainApp: React.FC = () => {
             />
           )}
 
-          {activeTab === 'chats' && <ProjectChatManager />}
-
           {activeTab === 'payments' && (
             <PaymentList onOpenNewPayment={handleOpenNewPayment} />
           )}
 
           {activeTab === 'reports' && <Reports />}
+
+          {activeTab === 'calendar' && <CalendarMain />}
 
           {activeTab === 'datacenter' && <DataCenter />}
 
@@ -385,6 +389,12 @@ const MainApp: React.FC = () => {
           entityId={sharePortalData.id}
         />
       )}
+
+      {/* Gemini CRM AI Chat Modal */}
+      <GeminiChatModal
+        isOpen={isGeminiChatOpen}
+        onClose={() => setIsGeminiChatOpen(false)}
+      />
     </div>
   );
 };

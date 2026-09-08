@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import localConfig from '../firebase-applet-config.json';
 
 // Support Vercel env vars or fallback to firebase-applet-config.json
@@ -22,7 +22,21 @@ const firestoreDatabaseId =
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-export const db = getFirestore(app, firestoreDatabaseId);
+let firestoreDb;
+try {
+  firestoreDb = initializeFirestore(
+    app,
+    {
+      ignoreUndefinedProperties: true,
+      experimentalAutoDetectLongPolling: true,
+    },
+    firestoreDatabaseId
+  );
+} catch {
+  firestoreDb = getFirestore(app, firestoreDatabaseId);
+}
+
+export const db = firestoreDb;
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
@@ -53,8 +67,14 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  // If the error is a transient connectivity glitch, log an informative warning instead of treating it as fatal
+  const msg = error instanceof Error ? error.message : String(error);
+  if (msg.includes('unavailable') || msg.includes('offline') || msg.includes('network')) {
+    console.warn(`[Firebase] Firestore transient network status (${operationType} at ${path}):`, msg);
+  }
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: msg,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -69,7 +89,6 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path,
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
   return errInfo;
 }
 
@@ -79,14 +98,23 @@ export async function testConnection(): Promise<boolean> {
     console.log('[Firebase] Connected to Firestore database:', firestoreDatabaseId);
     return true;
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('[Firebase] Client is offline or database configuration needs attention.');
+    // getDocFromServer throws code=unavailable if the initial socket handshake is still negotiating.
+    // This is expected and normal during initial page load, and Firestore continues to connect seamlessly.
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes('unavailable') || msg.includes('offline')) {
+      console.log('[Firebase] Firestore is establishing backend connection...');
     } else {
-      console.warn('[Firebase] Connection ping notice:', error);
+      console.warn('[Firebase] Connection status note:', msg);
     }
     return false;
   }
 }
 
-// Initial connection test
-testConnection();
+// Initial connection test with slight deferral to allow network socket to warm up
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    testConnection().catch(() => {});
+  }, 1000);
+} else {
+  testConnection().catch(() => {});
+}

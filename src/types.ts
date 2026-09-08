@@ -2,7 +2,7 @@ export type ClientType = 'Regular' | 'Work';
 
 export type PortalStatus = 'Active' | 'Inactive' | 'Deleted';
 
-export type WorkDoneBy = 'Me / Custom' | 'Assigned';
+export type WorkDoneBy = 'Me / Custom' | 'Assigned' | 'Self';
 
 export type WorkType =
   | 'Video Editing'
@@ -26,6 +26,10 @@ export type WorkStatus =
   | 'Cancelled'
   | 'Revision Required'
   | 'Approved';
+
+export type ProjectPriority = 'Low' | 'Medium' | 'High' | 'Urgent';
+
+export type EditorAvailability = 'Available' | 'Busy' | 'Away' | 'Offline';
 
 export type ProjectStatus = WorkStatus;
 
@@ -93,21 +97,29 @@ export interface WorkProject {
   totalBilling: number; // quantity * clientRate
   workDoneBy: WorkDoneBy;
   assignedTo: string | null; // Editor ID or null
+  editorId?: string; // Optional alias for editor ID
+  assignedEditorId?: string; // Optional alias for editor ID
   editorRate: number;
   editorCost?: number;
   profit?: number;
   dueDate: string; // YYYY-MM-DD
+  priority?: ProjectPriority; // 'Low' | 'Medium' | 'High' | 'Urgent'
+  completedAt?: string;
+  lastReminderState?: string;
+  lastReminderSentAt?: string;
   notes: string;
   status: WorkStatus;
   createdAt: string;
+  updatedAt?: string;
 
-  // The Exact 4-Link System:
-  // Editor Links:
-  userDownloadLink: string; // Editor: Download Raw Data
-  userUploadLink: string;   // Editor: Upload Edited Data
-  // Client Links:
-  clientDownloadLink: string; // Client: Download Edited Data
-  clientUploadLink: string;   // Client: Upload Raw Data
+  // Canonical Single Shared Google Drive Folder per project
+  driveFolderUrl?: string;
+
+  // Legacy Drive Link Fields (preserved for backwards compatibility with existing projects, not required for new projects)
+  userDownloadLink?: string; // Legacy: Editor Download Raw Data
+  userUploadLink?: string;   // Legacy: Editor Upload Edited Data
+  clientDownloadLink?: string; // Legacy: Client Download Edited Data
+  clientUploadLink?: string;   // Legacy: Client Upload Raw Data
 
   // Manual Confirmations
   editorDownloadConfirmed: boolean;
@@ -134,29 +146,11 @@ export interface WorkProject {
   approvedAt?: string;
   approvedBy?: string;
 
+  // Project-Level Live Chat Control (Admin moderated)
+  chatEnabled?: boolean; // Defaults to true if editor assigned, false if disabled by admin or upon client approval
+
   // Timeline
   timeline: TimelineEvent[];
-
-  // Client-Editor Project Chat
-  chatDisabled?: boolean;
-  chatDisabledAt?: string;
-  chatClosedReason?: string;
-}
-
-export type ChatSenderRole = 'client' | 'editor' | 'admin';
-
-export interface ChatMessage {
-  id: string;
-  projectId: string;
-  workId: string;
-  clientId: string;
-  editorId: string;
-  senderId: string;
-  senderRole: ChatSenderRole;
-  senderName: string;
-  message: string;
-  createdAt: string;
-  status?: string;
 }
 
 export interface Client {
@@ -182,6 +176,8 @@ export interface Editor {
   notes: string;
   portalToken: string;
   portalStatus: PortalStatus;
+  availability?: EditorAvailability;
+  availabilityNote?: string;
   createdAt: string;
 }
 
@@ -238,7 +234,14 @@ export type ActivityEntityType =
   | 'file'
   | 'revision'
   | 'expense'
-  | 'confirmation';
+  | 'confirmation'
+  | 'chat'
+  | 'rating'
+  | 'invoice'
+  | 'receipt'
+  | 'reminder'
+  | 'task'
+  | 'settings';
 
 export interface Activity {
   id: string;
@@ -251,6 +254,7 @@ export interface Activity {
   entityId?: string;
   clientId?: string;
   editorId?: string;
+  workId?: string;
 }
 
 export type NotificationType =
@@ -259,7 +263,36 @@ export type NotificationType =
   | 'confirmation'
   | 'payment'
   | 'portal'
-  | 'revision';
+  | 'revision'
+  | 'chat'
+  | 'rating'
+  | 'invoice'
+  | 'receipt'
+  | 'reminder'
+  | 'deadline';
+
+export type ChatMessageStatus = 'PENDING_ADMIN_REVIEW' | 'APPROVED' | 'REJECTED';
+export type ChatSenderRole = 'client' | 'editor' | 'admin';
+
+export interface ChatMessage {
+  id: string;
+  projectId: string; // Equivalent to workId
+  workId: string;
+  clientId: string;
+  editorId: string;
+  senderId: string;
+  senderRole: ChatSenderRole;
+  senderName: string;
+  recipientId: string; // Specific ID or 'admin' / 'all'
+  recipientRole: 'client' | 'editor' | 'admin' | 'all';
+  message: string;
+  status: ChatMessageStatus;
+  moderationCategory?: string;
+  createdAt: string;
+  reviewedAt?: string;
+  reviewedByAdminId?: string;
+  rejectionReason?: string;
+}
 
 export interface NotificationItem {
   id: string;
@@ -333,4 +366,136 @@ export interface BusinessSettings {
   autoGenerateLinksFormat?: string;
   sessionTimeoutMinutes?: number;
   twoFactorEnabled?: boolean;
+  dashboardWidgets?: DashboardWidgetConfig[];
 }
+
+export interface DashboardWidgetConfig {
+  id: string;
+  title: string;
+  enabled: boolean;
+  order: number;
+}
+
+export interface Rating {
+  id?: string;
+  projectId?: string;
+  projectName?: string;
+  clientId?: string;
+  clientName?: string;
+  editorId?: string;
+  editorName?: string;
+  ratedBy?: 'client' | 'editor' | 'admin';
+  raterId?: string;
+  raterName?: string;
+  targetRole?: 'client' | 'editor' | 'admin';
+  targetType?: 'client' | 'editor' | 'project';
+  targetId: string;
+  targetName?: string;
+  authorRole?: 'admin' | 'client' | 'editor';
+  authorId?: string;
+  authorName?: string;
+  category?: string;
+  rating?: number; // 1 to 5
+  score?: number; // 1 to 5
+  feedback?: string;
+  createdAt: string;
+}
+
+export interface InvoiceItem {
+  id: string;
+  description: string;
+  quantity: number;
+  rate: number;
+  amount: number;
+}
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  clientId: string;
+  clientName: string;
+  clientEmail?: string;
+  clientPhone?: string;
+  workId?: string;
+  projectName?: string;
+  date: string;
+  dueDate?: string;
+  items: InvoiceItem[];
+  subtotal: number;
+  tax?: number;
+  total: number;
+  paidAmount: number;
+  dueAmount: number;
+  paymentStatus: PaymentStatus;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface Receipt {
+  id: string;
+  receiptNumber: string;
+  clientId: string;
+  clientName: string;
+  paymentId?: string;
+  workId?: string;
+  projectName?: string;
+  amountReceived: number;
+  paymentMethod: PaymentMethod;
+  paymentDate: string;
+  remainingBalance: number;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface BackupHistoryRecord {
+  id: string;
+  timestamp: string;
+  date: string;
+  time: string;
+  type: 'Full JSON Backup' | 'Pre-Restore Safety Backup' | 'System Snapshot' | 'PDF Snapshot' | string;
+  fileName: string;
+  fileSizeBytes?: number;
+  fileSizeFormatted?: string;
+  counts: {
+    clients: number;
+    editors: number;
+    projects: number;
+    payments: number;
+    expenses: number;
+    invoices: number;
+    revisions?: number;
+    notifications?: number;
+    activities?: number;
+    chatMessages?: number;
+    sharedLinks?: number;
+    calendarTasks?: number;
+  };
+  createdAt: string;
+}
+
+export type CalendarTaskPriority = 'Low' | 'Medium' | 'High';
+
+export type CalendarTaskType =
+  | 'To-Do'
+  | 'Reminder'
+  | 'Follow-up'
+  | 'Meeting'
+  | 'Personal/Admin Task';
+
+export type CalendarTaskStatus = 'Pending' | 'Completed';
+
+export interface CalendarTask {
+  id: string;
+  title: string;
+  description?: string;
+  date: string; // YYYY-MM-DD
+  time?: string; // HH:mm or empty
+  priority: CalendarTaskPriority;
+  type: CalendarTaskType;
+  status: CalendarTaskStatus;
+  createdAt: string;
+  updatedAt?: string;
+  createdBy?: string;
+}
+
+

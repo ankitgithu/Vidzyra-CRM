@@ -250,8 +250,8 @@ export const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
               {isClient && client?.phone && (
                 <div className="text-slate-500 text-[11px]">Phone: {client.phone}</div>
               )}
-              {!isClient && editor?.specialty && (
-                <div className="text-slate-500 text-[11px]">Role: {editor.specialty}</div>
+              {!isClient && (editor as any)?.specialty && (
+                <div className="text-slate-500 text-[11px]">Role: {(editor as any).specialty}</div>
               )}
             </div>
 

@@ -203,7 +203,7 @@
     },
     "ChatMessage": {
       "title": "ChatMessage",
-      "description": "Text-only project communication message between client and assigned editor",
+      "description": "Admin-moderated live chat message between client and assigned editor for a project",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128 },
@@ -214,11 +214,36 @@
         "senderId": { "type": "string", "maxLength": 128 },
         "senderRole": { "type": "string", "maxLength": 50 },
         "senderName": { "type": "string", "maxLength": 200 },
-        "message": { "type": "string", "maxLength": 2000 },
+        "recipientId": { "type": "string", "maxLength": 128 },
+        "recipientRole": { "type": "string", "maxLength": 50 },
+        "message": { "type": "string", "maxLength": 4000 },
+        "status": { "type": "string", "maxLength": 50 },
+        "moderationCategory": { "type": "string", "maxLength": 100 },
         "createdAt": { "type": "string", "maxLength": 100 },
-        "status": { "type": "string", "maxLength": 50 }
+        "reviewedAt": { "type": "string", "maxLength": 100 },
+        "reviewedByAdminId": { "type": "string", "maxLength": 128 },
+        "rejectionReason": { "type": "string", "maxLength": 1000 }
       },
-      "required": ["id", "projectId", "clientId", "editorId", "senderId", "message"]
+      "required": ["id", "projectId", "senderId", "senderRole", "message", "status"]
+    },
+    "CalendarTask": {
+      "title": "CalendarTask",
+      "description": "Admin to-do, reminder, meeting, or follow-up task on the CRM Calendar",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 300 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "date": { "type": "string", "maxLength": 50 },
+        "time": { "type": "string", "maxLength": 50 },
+        "priority": { "type": "string", "maxLength": 50 },
+        "type": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "maxLength": 100 },
+        "createdBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "title", "date", "status"]
     }
   },
   "firestore": {
@@ -264,7 +289,11 @@
     },
     "/chatMessages/{messageId}": {
       "schema": { "$ref": "#/entities/ChatMessage" },
-      "description": "Collection of project chat messages between clients and assigned editors"
+      "description": "Collection of project-specific, admin-moderated chat messages"
+    },
+    "/calendarTasks/{taskId}": {
+      "schema": { "$ref": "#/entities/CalendarTask" },
+      "description": "Collection of admin tasks, to-dos, and reminders for the calendar"
     }
   }
 }

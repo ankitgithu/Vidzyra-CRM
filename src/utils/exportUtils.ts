@@ -8,6 +8,7 @@ import {
   Activity,
   NotificationItem,
 } from '../types';
+import { getProjectDriveFolderUrl } from './driveUtils';
 
 export function isDateInRange(dateStr: string, startDate?: string, endDate?: string): boolean {
   if (!startDate && !endDate) return true;
@@ -109,6 +110,7 @@ export function exportCrmDataCenter({
     'Editor Cost',
     'Status',
     'Due Date',
+    'Drive Folder URL',
     'User Download Link',
     'User Upload Link',
     'Client Download Link',
@@ -131,6 +133,7 @@ export function exportCrmDataCenter({
     p.assignedTo ? p.quantity * p.editorRate : 0,
     p.status,
     p.dueDate,
+    getProjectDriveFolderUrl(p) || 'Not configured',
     p.userDownloadLink || 'Not configured',
     p.userUploadLink || 'Not configured',
     p.clientDownloadLink || 'Not configured',

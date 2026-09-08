@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Activity as ActivityIcon,
   RotateCcw,
+  Sparkles,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
 import { WorkProject, Activity } from '../../types';
@@ -27,6 +28,7 @@ interface DashboardProps {
   onOpenClient: (id: string) => void;
   onOpenEditor: (id: string) => void;
   onOpenEditLink: (workId: string) => void;
+  onOpenGeminiChat?: () => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -34,6 +36,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenClient,
   onOpenEditor,
   onOpenEditLink,
+  onOpenGeminiChat,
 }) => {
   const {
     clients,
@@ -176,6 +179,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <div className="space-y-8 p-6 lg:p-8 max-w-7xl mx-auto">
+      {/* PERMANENT WELCOME / DATA SAFETY MESSAGE */}
+      <div
+        id="dashboard-permanent-welcome-banner"
+        className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-5 sm:p-6 transition relative overflow-hidden"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+          <div className="space-y-3 max-w-3xl">
+            <div>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                Hello Ankit 👋
+              </h2>
+              <p className="text-sm font-medium text-slate-600 mt-0.5">
+                Welcome to Vidzyra Work Management
+              </p>
+            </div>
+
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-800 rounded-full text-xs font-semibold border border-emerald-200/80">
+              <span>🟢 Your CRM is Live</span>
+            </div>
+
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              Please handle all data carefully. Before making major changes or deleting records, download the latest backup from Data Center to keep your information safe.
+            </p>
+
+            <p className="text-xs sm:text-sm font-semibold text-slate-800 pt-1">
+              Your data. Your work. Your responsibility. 🔐
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Welcome Title */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -184,8 +218,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
             Operational and Financial Pulse for your Social Media &amp; Video Production CRM
           </p>
         </div>
-        <div className="flex items-center space-x-2">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-semibold border border-emerald-200">
+        <div className="flex items-center space-x-2.5">
+          {onOpenGeminiChat && (
+            <button
+              id="dashboard-open-gemini-chat-btn"
+              type="button"
+              onClick={onOpenGeminiChat}
+              className="flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer"
+              title="Open Gemini AI Chatbot"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>Ask Gemini</span>
+            </button>
+          )}
+
+          <span className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-semibold border border-emerald-200">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             Live Sync Active
           </span>
@@ -1115,6 +1162,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
           )}
         </div>
       </section>
+
+      {/* Floating Gemini Chat Trigger Button */}
+      {onOpenGeminiChat && (
+        <button
+          id="dashboard-floating-gemini-btn"
+          type="button"
+          onClick={onOpenGeminiChat}
+          className="fixed bottom-6 right-6 z-40 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white p-3.5 rounded-full shadow-lg shadow-indigo-600/30 flex items-center gap-2.5 transition hover:scale-105 cursor-pointer"
+          title="Ask Gemini CRM AI"
+        >
+          <Sparkles className="w-5 h-5 text-amber-300" />
+          <span className="text-xs font-bold pr-1">Ask Gemini</span>
+        </button>
+      )}
     </div>
   );
 };

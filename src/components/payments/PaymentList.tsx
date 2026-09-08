@@ -22,6 +22,7 @@ import {
   RotateCcw,
   Sparkles,
   Trash2,
+  FileText,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
 import { ReceiptData } from '../../utils/receiptGenerator';
@@ -29,6 +30,7 @@ import { exportPaymentsToCsv, exportExpensesToCsv } from '../../utils/exportUtil
 import { PaymentReceiptModal } from './PaymentReceiptModal';
 import { PaymentFormModal } from './PaymentFormModal';
 import { PaymentDetailModal } from './PaymentDetailModal';
+import { InvoiceListTab } from './InvoiceListTab';
 import {
   ClientPayment,
   EditorPayment,
@@ -57,10 +59,11 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
     deleteClientPayment,
     deleteEditorPayment,
     deleteExpense,
+    invoices,
   } = useCrm();
 
-  // Active tab: 'clients' | 'editors' | 'expenses'
-  const [activeTab, setActiveTab] = useState<'clients' | 'editors' | 'expenses'>('clients');
+  // Active tab: 'clients' | 'editors' | 'expenses' | 'invoices'
+  const [activeTab, setActiveTab] = useState<'clients' | 'editors' | 'expenses' | 'invoices'>('clients');
 
   // Search and Filter States
   const [search, setSearch] = useState('');
@@ -672,23 +675,38 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
               <DollarSign className="w-3.5 h-3.5 text-rose-600" />
               AGENCY EXPENSES ({expenses.length})
             </button>
+
+            <button
+              id="tab-agency-invoices"
+              onClick={() => setActiveTab('invoices')}
+              className={`px-3.5 py-2 rounded-lg transition flex items-center gap-1.5 ${
+                activeTab === 'invoices'
+                  ? 'bg-white text-indigo-800 shadow-2xs font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5 text-indigo-600" />
+              INVOICES ({invoices.length})
+            </button>
           </div>
 
           {/* Search Input */}
-          <div className="relative w-full md:w-80">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search receipt #, name, project, UTR..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-            />
-          </div>
+          {activeTab !== 'invoices' && (
+            <div className="relative w-full md:w-80">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search receipt #, name, project, UTR..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              />
+            </div>
+          )}
         </div>
 
         {/* Filters Row (Client, Editor, Type, Status, Method, Date Range) */}
-        {activeTab !== 'expenses' && (
+        {activeTab !== 'expenses' && activeTab !== 'invoices' && (
           <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-slate-400 font-semibold flex items-center gap-1 text-[11px] mr-1">
               <Filter className="w-3 h-3" /> Filters:
@@ -1176,6 +1194,9 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
           </div>
         </div>
       )}
+
+      {/* Tab 4: INVOICES MANAGEMENT */}
+      {activeTab === 'invoices' && <InvoiceListTab />}
 
       {/* 7. Dedicated Modals: Form Modal, Detail Modal, Receipt Modal */}
       {/* Payment Form Modal (Create & Edit) */}

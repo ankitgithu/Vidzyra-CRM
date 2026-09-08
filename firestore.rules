@@ -80,12 +80,55 @@ service cloud.firestore {
       allow write: if isValidId(linkId);
     }
 
-    // Client-Editor Project Chat Messages
+    // Project-Specific Admin-Moderated Live Chat Messages
     match /chatMessages/{messageId} {
       allow get: if isValidId(messageId);
       allow list: if true;
       allow write: if isValidId(messageId);
     }
+
+    // Client & Editor Ratings
+    match /ratings/{ratingId} {
+      allow get: if isValidId(ratingId);
+      allow list: if true;
+      allow write: if isValidId(ratingId);
+    }
+
+    // Invoices
+    match /invoices/{invoiceId} {
+      allow get: if isValidId(invoiceId);
+      allow list: if true;
+      allow write: if isValidId(invoiceId);
+    }
+
+    // Receipts
+    match /receipts/{receiptId} {
+      allow get: if isValidId(receiptId);
+      allow list: if true;
+      allow write: if isValidId(receiptId);
+    }
+
+    // Admin Users
+    match /adminUsers/{adminUserId} {
+      allow get: if isValidId(adminUserId);
+      allow list: if true;
+      allow write: if isValidId(adminUserId);
+    }
+
+    // Backup History Metadata
+    match /backupHistory/{backupId} {
+      allow get: if isValidId(backupId);
+      allow list: if true;
+      allow write: if isValidId(backupId);
+    }
+
+    // Calendar Tasks
+    match /calendarTasks/{taskId} {
+      allow get: if isValidId(taskId);
+      allow list: if true;
+      allow write: if isValidId(taskId);
+    }
   }
 }
+
 

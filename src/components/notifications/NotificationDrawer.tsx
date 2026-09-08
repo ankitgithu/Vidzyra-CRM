@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Trash2,
   AlertTriangle,
+  MessageSquare,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
 import { NotificationType } from '../../types';
@@ -119,6 +120,8 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
         return <Globe className="w-4 h-4 text-amber-500" />;
       case 'revision':
         return <RotateCcw className="w-4 h-4 text-rose-500" />;
+      case 'chat':
+        return <MessageSquare className="w-4 h-4 text-indigo-600" />;
       default:
         return <Bell className="w-4 h-4 text-slate-500" />;
     }

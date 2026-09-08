@@ -10,6 +10,7 @@ import {
   CreditCard,
   Briefcase,
   UserPlus,
+  Sparkles,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
 
@@ -18,6 +19,7 @@ interface HeaderProps {
   onOpenNewClient: () => void;
   onOpenNewPayment: () => void;
   onToggleNotifications: () => void;
+  onOpenGeminiChat?: () => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
 }
@@ -27,6 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenNewClient,
   onOpenNewPayment,
   onToggleNotifications,
+  onOpenGeminiChat,
   searchQuery,
   setSearchQuery,
 }) => {
@@ -180,6 +183,20 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
         </div>
+
+        {/* Gemini AI Chat Icon Button */}
+        {onOpenGeminiChat && (
+          <button
+            id="header-gemini-chat-btn"
+            type="button"
+            onClick={onOpenGeminiChat}
+            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/90 text-indigo-700 rounded-lg text-xs font-semibold transition shadow-2xs cursor-pointer"
+            title="Open Gemini CRM AI Chatbot"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+            <span className="hidden sm:inline">Ask Gemini</span>
+          </button>
+        )}
 
         {/* Notifications Icon Button */}
         <button

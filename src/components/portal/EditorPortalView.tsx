@@ -10,19 +10,26 @@ import {
   LogOut,
   FolderDown,
   FolderUp,
+  Folder,
   CreditCard,
   Briefcase,
   AlertCircle,
   Clock,
   Bell,
   X,
+  Layers,
+  Star,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
-import { ProjectStatus } from '../../types';
+import { ProjectStatus, EditorAvailability } from '../../types';
 import { ReceiptData } from '../../utils/receiptGenerator';
 import { PaymentReceiptModal } from '../payments/PaymentReceiptModal';
 import { NotificationDrawer } from '../notifications/NotificationDrawer';
+import { getProjectDriveFolderUrl } from '../../utils/driveUtils';
 import { ProjectChatModal } from '../chat/ProjectChatModal';
+import { getDeadlineInfo } from '../../utils/deadlines';
+import { StarDisplay } from '../common/StarDisplay';
+import { EditorWorkQueue } from './EditorWorkQueue';
 
 interface EditorPortalViewProps {
   editorId: string;
@@ -42,17 +49,28 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
     getEditorStats,
     updateProject,
     submitEditorCompletion,
+    submitEditorFileUpload,
     notifications,
     settings,
+    chatMessages,
+    updateEditor,
+    ratings,
   } = useCrm();
 
   const editor = editors.find((e) => e.id === editorId);
+  const [portalTab, setPortalTab] = useState<'queue' | 'table'>('queue');
+  const [activeChatProjectId, setActiveChatProjectId] = useState<string | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptData | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<Record<string, ProjectStatus>>({});
   const [submittingWorkId, setSubmittingWorkId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [chatProjectId, setChatProjectId] = useState<string | null>(null);
+
+  // Editor Upload Deliverable Modal state
+  const [uploadModalWorkId, setUploadModalWorkId] = useState<string | null>(null);
+  const [uploadType, setUploadType] = useState<'Edited Video' | 'Revision' | 'Final Deliverable'>('Edited Video');
+  const [uploadNotes, setUploadNotes] = useState('');
+  const [isSubmittingUpload, setIsSubmittingUpload] = useState(false);
 
   const editorNotifications = useMemo(
     () =>
@@ -116,8 +134,21 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
   }
 
   const stats = getEditorStats(editor.id);
-  const assignedProjects = projects.filter((p) => p.assignedTo === editor.id && p.workDoneBy === 'Assigned');
+  const assignedProjects = projects.filter((p) => {
+    const assignedEditorId = p.assignedTo || (p as any).editorId || (p as any).assignedEditorId;
+    return Boolean(assignedEditorId && assignedEditorId === editor.id);
+  });
   const payments = editorPayments.filter((p) => p.editorId === editor.id);
+
+  const editorRatings = ratings.filter((r) => r.editorId === editor.id);
+  const avgRating =
+    editorRatings.length > 0
+      ? (editorRatings.reduce((sum, r) => sum + r.score, 0) / editorRatings.length).toFixed(1)
+      : null;
+
+  const handleAvailabilityChange = (newAvailability: EditorAvailability) => {
+    updateEditor(editor.id, { availability: newAvailability });
+  };
 
   const handleDropdownChange = (projectId: string, newStatus: ProjectStatus) => {
     setSelectedStatus((prev) => ({ ...prev, [projectId]: newStatus }));
@@ -252,14 +283,49 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
         {/* Welcome Card */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Welcome, {editor.name}</h2>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="text-xl font-bold text-slate-900 tracking-tight">Welcome, {editor.name}</h2>
+              {avgRating && (
+                <div className="flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 border border-amber-200 rounded-full text-xs font-bold text-amber-800">
+                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+                  <span>{avgRating}</span>
+                  <span className="text-[10px] text-amber-600 font-normal">({editorRatings.length})</span>
+                </div>
+              )}
+            </div>
             <p className="text-xs text-slate-500 mt-1">
               Download your project raw footage assets, submit final render exports, update status, and track your
               earnings ledger.
             </p>
           </div>
-          <div>
-            <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Availability status selector */}
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  (editor.availability || 'Available') === 'Available'
+                    ? 'bg-emerald-500'
+                    : editor.availability === 'Busy'
+                    ? 'bg-amber-500'
+                    : editor.availability === 'Away'
+                    ? 'bg-blue-500'
+                    : 'bg-slate-400'
+                }`}
+              />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status:</span>
+              <select
+                value={editor.availability || 'Available'}
+                onChange={(e) => handleAvailabilityChange(e.target.value as EditorAvailability)}
+                className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-hidden cursor-pointer"
+              >
+                <option value="Available">Available for Work</option>
+                <option value="Busy">Busy (In Editing)</option>
+                <option value="Away">Away</option>
+                <option value="Offline">Offline</option>
+              </select>
+            </div>
+
+            <span className="px-3 py-1.5 rounded-xl text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">
               Rate: ₹{editor.editorRate} / video
             </span>
           </div>
@@ -292,206 +358,265 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
           </div>
         </div>
 
-        {/* Assigned Projects Table */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="p-5 border-b border-slate-200 flex items-center justify-between">
-            <h3 className="font-bold text-slate-900 text-sm">Your Assigned Editing Deliverables</h3>
-            <span className="text-xs text-slate-500">{assignedProjects.length} deliverables</span>
-          </div>
-
-          <div className="divide-y divide-slate-100">
-            {assignedProjects.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 text-xs italic">
-                No editing deliverables currently assigned.
-              </div>
-            ) : (
-              assignedProjects.map((p) => (
-                <div key={p.id} className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="space-y-1.5 flex-1">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-bold text-slate-900 text-sm">{p.name}</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded font-semibold bg-purple-50 text-purple-700 border border-purple-200">
-                        {p.workType}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center space-x-3 text-xs text-slate-500">
-                      <span>Due Date: <strong>{p.dueDate || 'Urgent'}</strong></span>
-                      <span>•</span>
-                      <span>Qty: <strong>{p.quantity}</strong></span>
-                      <span>•</span>
-                      <span className="font-semibold text-purple-700">
-                        Your Payout: ₹{(p.quantity * p.editorRate).toLocaleString()}
-                      </span>
-                    </div>
-
-                    {p.notes && (
-                      <div className="text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700">
-                        <strong>Brief / Instructions:</strong> {p.notes}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 4-Links Cloud Buttons & Status for Editor */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* Raw Footage link for Editor */}
-                    {p.clientDownloadLink ? (
-                      <a
-                        href={p.clientDownloadLink}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-semibold transition"
-                        title="Download raw assets and footage"
-                      >
-                        <FolderDown className="w-3.5 h-3.5 text-purple-600" />
-                        Download Raw Assets
-                      </a>
-                    ) : (
-                      <span className="text-[11px] text-slate-400 italic px-2">Raw link pending</span>
-                    )}
-
-                    {/* Upload Final Render link for Editor */}
-                    {p.clientUploadLink ? (
-                      <a
-                        href={p.clientUploadLink}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold shadow-2xs transition"
-                        title="Upload your completed render here"
-                      >
-                        <FolderUp className="w-3.5 h-3.5" />
-                        Upload Final Render
-                      </a>
-                    ) : (
-                      <span className="text-[11px] text-slate-400 italic px-2">Upload link pending</span>
-                    )}
-
-                    {/* Client–Editor Project Chat Button */}
-                    <button
-                      id={`btn-editor-chat-${p.id}`}
-                      onClick={() => setChatProjectId(p.id)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                        p.status === 'Approved' || p.reviewStatus === 'Approved'
-                          ? 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
-                          : p.chatDisabled
-                          ? 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
-                          : 'bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 shadow-2xs'
-                      }`}
-                      title={
-                        p.status === 'Approved' || p.reviewStatus === 'Approved'
-                          ? 'Chat closed (project approved)'
-                          : p.chatDisabled
-                          ? 'Chat disabled by administrator'
-                          : 'Chat with client regarding video deliverables'
-                      }
-                    >
-                      <MessageSquare className="w-3.5 h-3.5" />
-                      {p.status === 'Approved' || p.reviewStatus === 'Approved' ? 'Chat (Closed)' : 'Chat with Client'}
-                    </button>
-
-                    {/* Status Workflow for Editor */}
-                    {p.status === 'Approved' || p.reviewStatus === 'Approved' ? (
-                      <span
-                        id={`editor-approved-badge-${p.id}`}
-                        className="px-3 py-1.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1.5 select-none shadow-2xs"
-                      >
-                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                        Approved by Client
-                      </span>
-                    ) : p.status === 'Completed' ? (
-                      <div className="flex items-center gap-2">
-                        <span
-                          id={`editor-completed-badge-${p.id}`}
-                          className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-semibold flex items-center gap-1.5"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                          Completed (Awaiting Client Review)
-                        </span>
-                        {/* Option to re-open if needed */}
-                        <select
-                          value="Completed"
-                          onChange={(e) => {
-                            const val = e.target.value as ProjectStatus;
-                            if (val !== 'Completed') {
-                              handleDropdownChange(p.id, val);
-                            }
-                          }}
-                          className="text-[11px] font-medium px-2 py-1 bg-white border border-slate-200 rounded-lg text-slate-500 cursor-pointer"
-                          title="Change status if further edits required"
-                        >
-                          <option value="Completed">Completed</option>
-                          <option value="In Progress">Reopen (In Progress)</option>
-                        </select>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <select
-                          id={`select-status-${p.id}`}
-                          value={selectedStatus[p.id] || p.status}
-                          onChange={(e) => handleDropdownChange(p.id, e.target.value as ProjectStatus)}
-                          className="text-xs font-semibold px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800 cursor-pointer focus:ring-2 focus:ring-purple-500/20"
-                        >
-                          <option value="Pending">Pending</option>
-                          <option value="In Progress">In Progress</option>
-                          {p.status === 'Revision Required' && (
-                            <option value="Revision Required">Revision in Progress</option>
-                          )}
-                          <option value="Completed">Mark as Complete</option>
-                        </select>
-
-                        {/* Submit button appears when "Mark as Complete" is selected */}
-                        {(selectedStatus[p.id] === 'Completed' || (p.status === 'Completed' && false)) && (
-                          <button
-                            id={`btn-submit-editor-${p.id}`}
-                            type="button"
-                            disabled={submittingWorkId === p.id}
-                            onClick={() => handleSubmitCompletion(p.id)}
-                            className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer disabled:cursor-not-allowed animate-in fade-in"
-                          >
-                            {submittingWorkId === p.id ? (
-                              <>
-                                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                                Submitting...
-                              </>
-                            ) : (
-                              <>
-                                <CheckCircle className="w-3.5 h-3.5" />
-                                Submit
-                              </>
-                            )}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Revision Alert Box if revision requested */}
-                  {p.status === 'Revision Required' && (
-                    <div className="mt-3 p-3 bg-amber-50/90 border border-amber-200 rounded-xl text-xs space-y-1.5">
-                      <div className="flex items-center justify-between font-semibold text-amber-900">
-                        <span className="flex items-center gap-1.5">
-                          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                          Client Requested Revision
-                        </span>
-                        {p.revisionTimecode && (
-                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-mono text-[11px]">
-                            Timecode: {p.revisionTimecode}
-                          </span>
-                        )}
-                      </div>
-                      {p.revisionNotes && (
-                        <p className="text-slate-700 whitespace-pre-line pl-5">{p.revisionNotes}</p>
-                      )}
-                      <p className="text-[11px] text-amber-700 italic pl-5">
-                        Please upload your new render to the "Upload Final Render" link above, select "Mark as Complete" from the dropdown, and click <strong>Submit</strong>.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
+        {/* View Switcher: Interactive Queue vs Table View */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center bg-slate-200/80 p-1 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setPortalTab('queue')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                portalTab === 'queue'
+                  ? 'bg-white text-purple-900 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5 text-purple-600" />
+              Priority Work Queue ({assignedProjects.filter((p) => p.status !== 'Completed' && p.status !== 'Delivered').length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setPortalTab('table')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                portalTab === 'table'
+                  ? 'bg-white text-purple-900 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Deliverables List ({assignedProjects.length})
+            </button>
           </div>
         </div>
+
+        {portalTab === 'queue' ? (
+          <EditorWorkQueue
+            projects={assignedProjects}
+            editorId={editor.id}
+            editorName={editor.name}
+            onUpdateStatus={(pId, status) => handleDropdownChange(pId, status)}
+            onSubmitCompletion={(pId) => handleSubmitCompletion(pId)}
+            onOpenUploadModal={(pId) => {
+              const prj = assignedProjects.find((p) => p.id === pId);
+              setUploadModalWorkId(pId);
+              setUploadType(prj?.status === 'Revision Required' ? 'Revision' : 'Edited Video');
+              setUploadNotes('');
+            }}
+            onOpenChat={(pId) => setActiveChatProjectId(pId)}
+          />
+        ) : (
+          /* Assigned Projects Table */
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="p-5 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 text-sm">Your Assigned Editing Deliverables</h3>
+              <span className="text-xs text-slate-500">{assignedProjects.length} deliverables</span>
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {assignedProjects.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs italic">
+                  No editing deliverables currently assigned.
+                </div>
+              ) : (
+                assignedProjects.map((p) => (
+                  <div key={p.id} className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="space-y-1.5 flex-1">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-slate-900 text-sm">{p.name}</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                          {p.workType}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center space-x-3 text-xs text-slate-500">
+                        <span>Due Date: <strong>{p.dueDate || 'Urgent'}</strong></span>
+                        <span>•</span>
+                        <span>Qty: <strong>{p.quantity}</strong></span>
+                        <span>•</span>
+                        <span className="font-semibold text-purple-700">
+                          Your Payout: ₹{(p.quantity * p.editorRate).toLocaleString()}
+                        </span>
+                      </div>
+
+                      {p.notes && (
+                        <div className="text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700">
+                          <strong>Brief / Instructions:</strong> {p.notes}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Project Files Section (Single Google Drive Folder) & Status for Editor */}
+                    <div className="flex flex-wrap items-center gap-3">
+                      {(() => {
+                        const folderUrl = getProjectDriveFolderUrl(p);
+                        return (
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider hidden sm:inline">
+                              Project Files:
+                            </span>
+                            {folderUrl ? (
+                              <div className="flex items-center gap-2">
+                                <a
+                                  id={`btn-editor-open-folder-${p.id}`}
+                                  href={folderUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold shadow-2xs transition"
+                                  title="Open project Google Drive folder"
+                                >
+                                  <Folder className="w-3.5 h-3.5" />
+                                  Open Project Folder
+                                </a>
+                                <button
+                                  id={`btn-editor-upload-files-${p.id}`}
+                                  type="button"
+                                  onClick={() => {
+                                    setUploadModalWorkId(p.id);
+                                    setUploadType(p.status === 'Revision Required' ? 'Revision' : 'Edited Video');
+                                    setUploadNotes('');
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer"
+                                  title="Upload deliverables to Google Drive folder"
+                                >
+                                  <FolderUp className="w-3.5 h-3.5 text-purple-600" />
+                                  Upload Files
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 italic px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg">
+                                Folder not assigned yet
+                              </span>
+                            )}
+
+                            {/* Live Project Chat Button */}
+                            <button
+                              id={`btn-editor-chat-${p.id}`}
+                              type="button"
+                              onClick={() => setActiveChatProjectId(p.id)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-semibold shadow-2xs transition cursor-pointer"
+                              title="Live chat with project client"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5 text-purple-600" />
+                              <span>Chat</span>
+                              {(() => {
+                                const projectMsgs = chatMessages.filter(
+                                  (m) =>
+                                    (m.projectId === p.id || m.workId === p.id) &&
+                                    (m.status === 'APPROVED' || m.senderId === editor.id)
+                                );
+                                return projectMsgs.length > 0 ? (
+                                  <span className="px-1.5 py-0.2 bg-purple-600 text-white rounded-full text-[10px] font-bold">
+                                    {projectMsgs.length}
+                                  </span>
+                                ) : null;
+                              })()}
+                            </button>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Status Workflow for Editor */}
+                      {p.status === 'Approved' || p.reviewStatus === 'Approved' ? (
+                        <span
+                          id={`editor-approved-badge-${p.id}`}
+                          className="px-3 py-1.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1.5 select-none shadow-2xs"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                          Approved by Client
+                        </span>
+                      ) : p.status === 'Completed' ? (
+                        <div className="flex items-center gap-2">
+                          <span
+                            id={`editor-completed-badge-${p.id}`}
+                            className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            Completed (Awaiting Client Review)
+                          </span>
+                          {/* Option to re-open if needed */}
+                          <select
+                            value="Completed"
+                            onChange={(e) => {
+                              const val = e.target.value as ProjectStatus;
+                              if (val !== 'Completed') {
+                                handleDropdownChange(p.id, val);
+                              }
+                            }}
+                            className="text-[11px] font-medium px-2 py-1 bg-white border border-slate-200 rounded-lg text-slate-500 cursor-pointer"
+                            title="Change status if further edits required"
+                          >
+                            <option value="Completed">Completed</option>
+                            <option value="In Progress">Reopen (In Progress)</option>
+                          </select>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <select
+                            id={`select-status-${p.id}`}
+                            value={selectedStatus[p.id] || p.status}
+                            onChange={(e) => handleDropdownChange(p.id, e.target.value as ProjectStatus)}
+                            className="text-xs font-semibold px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-800 cursor-pointer focus:ring-2 focus:ring-purple-500/20"
+                          >
+                            <option value="Pending">Pending</option>
+                            <option value="In Progress">In Progress</option>
+                            {p.status === 'Revision Required' && (
+                              <option value="Revision Required">Revision in Progress</option>
+                            )}
+                            <option value="Completed">Mark as Complete</option>
+                          </select>
+
+                          {/* Submit button appears when "Mark as Complete" is selected */}
+                          {selectedStatus[p.id] === 'Completed' && (
+                            <button
+                              id={`btn-submit-editor-${p.id}`}
+                              type="button"
+                              disabled={submittingWorkId === p.id}
+                              onClick={() => handleSubmitCompletion(p.id)}
+                              className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer disabled:cursor-not-allowed animate-in fade-in"
+                            >
+                              {submittingWorkId === p.id ? (
+                                <>
+                                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                  Submitting...
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                  Submit
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Revision Alert Box if revision requested */}
+                    {p.status === 'Revision Required' && (
+                      <div className="mt-3 p-3 bg-amber-50/90 border border-amber-200 rounded-xl text-xs space-y-1.5">
+                        <div className="flex items-center justify-between font-semibold text-amber-900">
+                          <span className="flex items-center gap-1.5">
+                            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                            Client Requested Revision
+                          </span>
+                          {p.revisionTimecode && (
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-mono text-[11px]">
+                              Timecode: {p.revisionTimecode}
+                            </span>
+                          )}
+                        </div>
+                        {p.revisionNotes && (
+                          <p className="text-slate-700 whitespace-pre-line pl-5">{p.revisionNotes}</p>
+                        )}
+                        <p className="text-[11px] text-amber-700 italic pl-5">
+                          Please upload your new render to the "Upload Final Render" link above, select "Mark as Complete" from the dropdown, and click <strong>Submit</strong>.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Payout Slips & Ledger */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
@@ -536,6 +661,154 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
         currentEntityId={editor.id}
       />
 
+      {/* Editor Upload Files Modal */}
+      {uploadModalWorkId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden flex flex-col">
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 bg-purple-100 text-purple-700 rounded-lg">
+                  <FolderUp className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Upload Deliverable to Drive</h3>
+                  <p className="text-[11px] text-slate-500">Shared Google Drive Folder</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setUploadModalWorkId(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-200 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-2">
+                  Select Deliverable Type:
+                </label>
+                <div className="space-y-2">
+                  {[
+                    {
+                      type: 'Edited Video' as const,
+                      title: 'Upload Edited Video',
+                      desc: 'Work in progress draft or initial cut for review',
+                    },
+                    {
+                      type: 'Revision' as const,
+                      title: 'Upload Revision',
+                      desc: 'Updated cut addressing client feedback or notes',
+                    },
+                    {
+                      type: 'Final Deliverable' as const,
+                      title: 'Upload Final Deliverable',
+                      desc: 'Completed final video ready for client sign-off',
+                    },
+                  ].map((opt) => (
+                    <label
+                      key={opt.type}
+                      className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition ${
+                        uploadType === opt.type
+                          ? 'border-purple-600 bg-purple-50/50 text-purple-950'
+                          : 'border-slate-200 hover:border-slate-300 bg-white'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="uploadType"
+                        value={opt.type}
+                        checked={uploadType === opt.type}
+                        onChange={() => setUploadType(opt.type)}
+                        className="mt-1 text-purple-600 focus:ring-purple-500"
+                      />
+                      <div className="text-xs">
+                        <span className="font-bold block text-slate-900">{opt.title}</span>
+                        <span className="text-slate-500 text-[11px]">{opt.desc}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Upload Notes or Details (Optional):
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Exported 4K ProRes with color grading & audio master"
+                  value={uploadNotes}
+                  onChange={(e) => setUploadNotes(e.target.value)}
+                  className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-800 focus:bg-white focus:ring-2 focus:ring-purple-500/20"
+                />
+              </div>
+
+              {(() => {
+                const targetProject = projects.find((p) => p.id === uploadModalWorkId);
+                const targetFolderUrl = targetProject ? getProjectDriveFolderUrl(targetProject) : '';
+                return (
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between text-xs">
+                    <span className="text-slate-600">Google Drive Folder:</span>
+                    {targetFolderUrl ? (
+                      <a
+                        href={targetFolderUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-purple-700 hover:underline font-medium inline-flex items-center gap-1"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        Open Folder
+                      </a>
+                    ) : (
+                      <span className="text-slate-400 italic">No URL set</span>
+                    )}
+                  </div>
+                );
+              })()}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setUploadModalWorkId(null)}
+                  className="px-3.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isSubmittingUpload}
+                  onClick={() => {
+                    const targetProject = projects.find((p) => p.id === uploadModalWorkId);
+                    if (!targetProject) return;
+                    setIsSubmittingUpload(true);
+                    const folderUrl = getProjectDriveFolderUrl(targetProject);
+                    if (folderUrl) {
+                      window.open(folderUrl, '_blank');
+                    }
+                    submitEditorFileUpload({
+                      workId: targetProject.id,
+                      editorId: editor.id,
+                      editorName: editor.name,
+                      uploadType,
+                      notes: uploadNotes.trim() || undefined,
+                    });
+                    setToastMessage(`Notification sent to Admin & Client: ${uploadType} uploaded.`);
+                    setTimeout(() => setToastMessage(null), 4000);
+                    setIsSubmittingUpload(false);
+                    setUploadModalWorkId(null);
+                  }}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <FolderUp className="w-3.5 h-3.5" />
+                  Open Folder &amp; Confirm Upload
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Receipt Modal */}
       <PaymentReceiptModal
         isOpen={!!selectedReceipt}
@@ -543,15 +816,14 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
         receiptData={selectedReceipt}
       />
 
-      {/* Client–Editor Project Chat Modal */}
-      {chatProjectId && (
+      {/* Project Live Chat Modal */}
+      {activeChatProjectId && (
         <ProjectChatModal
-          isOpen={Boolean(chatProjectId)}
-          onClose={() => setChatProjectId(null)}
-          projectId={chatProjectId}
-          currentRole="editor"
+          projectId={activeChatProjectId}
+          viewerRole="editor"
           currentUserId={editor.id}
           currentUserName={editor.name}
+          onClose={() => setActiveChatProjectId(null)}
         />
       )}
     </div>

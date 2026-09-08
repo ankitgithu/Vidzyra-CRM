@@ -14,11 +14,19 @@ import {
   RevisionStatus,
   TimelineEvent,
   ChatMessage,
+  ChatMessageStatus,
   ChatSenderRole,
+  Rating,
+  Invoice,
+  Receipt,
+  PaymentStatus,
+  EditorAvailability,
+  CalendarTask,
 } from '../types';
 import { initialSettings } from '../mockData';
 import * as firestoreService from '../services/firestoreService';
-import { validateChatMessage } from '../utils/chatFilter';
+import { evaluateMessageModeration } from '../utils/chatModeration';
+import { processDueReminders } from '../utils/reminders';
 
 export interface CrmContextType {
   clients: Client[];
@@ -30,6 +38,10 @@ export interface CrmContextType {
   activities: Activity[];
   notifications: NotificationItem[];
   settings: BusinessSettings;
+  chatMessages: ChatMessage[];
+  ratings: Rating[];
+  invoices: Invoice[];
+  receipts: Receipt[];
 
   // Real-time Database state
   isLoading: boolean;
@@ -83,6 +95,7 @@ export interface CrmContextType {
   updateWorkLinks: (
     workId: string,
     links: {
+      driveFolderUrl?: string;
       userDownloadLink?: string;
       userUploadLink?: string;
       clientDownloadLink?: string;
@@ -93,7 +106,8 @@ export interface CrmContextType {
       editorFolderLink?: string;
     }
   ) => void;
-  updateWorkStatus: (workId: string, newStatus: WorkStatus, updatedBy: string) => void;
+  updateProjectDriveFolder: (workId: string, driveFolderUrl: string) => void;
+  updateWorkStatus: (workId: string, newStatus: WorkStatus, updatedBy?: string) => void;
 
   // Manual Confirmation Actions
   confirmAction: (
@@ -112,22 +126,17 @@ export interface CrmContextType {
 
   // Review & Portal Completion Actions
   submitEditorCompletion: (workId: string, editorId: string, editorName?: string) => boolean;
-  approveWork: (workId: string, clientName?: string) => Promise<boolean> | boolean;
+  submitEditorFileUpload: (params: {
+    workId: string;
+    editorId: string;
+    editorName?: string;
+    uploadType: 'Edited Video' | 'Revision' | 'Final Deliverable';
+    notes?: string;
+  }) => boolean;
+  approveWork: (workId: string, clientName?: string) => boolean;
   submitClientRevision: (params: { workId: string; notes: string; timecode?: string; clientName?: string }) => boolean;
   submitClientDataUpload: (params: { workId: string; clientName?: string; notes?: string }) => boolean;
   updateProjectReview: (workId: string, reviewStatus: string, notes?: string, clientName?: string) => void;
-
-  // Client-Editor Project Chat
-  sendProjectChatMessage: (params: {
-    projectId: string;
-    senderId: string;
-    senderRole: ChatSenderRole;
-    senderName: string;
-    message: string;
-  }) => Promise<{ success: boolean; error?: string; messageId?: string }>;
-  deleteChatMessage: (messageId: string) => Promise<void>;
-  clearProjectChat: (projectId: string) => Promise<number>;
-  toggleProjectChatDisabled: (projectId: string, disabled: boolean) => Promise<void>;
 
   // Payments
   addClientPayment: (paymentData: Omit<ClientPayment, 'id' | 'receiptNumber' | 'createdAt'>) => ClientPayment;
@@ -149,6 +158,21 @@ export interface CrmContextType {
   deleteNotification: (id: string) => void;
   clearAllNotifications: (filter?: { role?: 'admin' | 'client' | 'editor'; id?: string }) => void;
   addActivity: (activity: Omit<Activity, 'id' | 'timestamp' | 'when'>) => void;
+
+  // Project Live Chat (Admin Moderated)
+  sendChatMessage: (params: {
+    projectId: string;
+    senderId: string;
+    senderRole: ChatSenderRole;
+    senderName: string;
+    message: string;
+    recipientRole?: 'client' | 'editor' | 'all';
+  }) => { success: boolean; error?: string; isRestricted?: boolean; pending?: boolean; messageId?: string };
+  approveChatMessage: (messageId: string) => Promise<boolean>;
+  rejectChatMessage: (messageId: string, reason?: string) => Promise<boolean>;
+  deleteChatMessage: (messageId: string) => Promise<boolean>;
+  toggleProjectChat: (workId: string, enabled: boolean) => void;
+  clearProjectChat: (workId: string) => Promise<void>;
 
   // Settings
   updateSettings: (newSettings: Partial<BusinessSettings>) => void;
@@ -209,8 +233,33 @@ export interface CrmContextType {
     paymentStatus: 'Paid' | 'Partial' | 'Pending';
   };
 
+  // Ratings
+  addRating: (ratingData: Omit<Rating, 'id' | 'createdAt'>) => Promise<Rating>;
+
+  // Invoices & Receipts
+  createInvoice: (invoiceData: Omit<Invoice, 'id' | 'createdAt'> | Invoice) => Promise<Invoice>;
+  addInvoice: (invoiceData: Omit<Invoice, 'id' | 'createdAt'> | Invoice) => Promise<Invoice>;
+  updateInvoice: (id: string, updates: Partial<Invoice>) => Promise<void>;
+  deleteInvoice: (id: string) => Promise<void>;
+  addReceipt: (receiptData: Omit<Receipt, 'id' | 'createdAt'>) => Promise<Receipt>;
+  deleteReceipt: (id: string) => Promise<void>;
+
+  // Editor Availability
+  updateEditorAvailability: (editorId: string, availability: EditorAvailability, note?: string) => Promise<void>;
+
+  // Calendar Admin Tasks
+  calendarTasks: CalendarTask[];
+  addCalendarTask: (taskData: Omit<CalendarTask, 'id' | 'createdAt'>) => Promise<CalendarTask>;
+  updateCalendarTask: (id: string, updates: Partial<CalendarTask>) => Promise<void>;
+  deleteCalendarTask: (id: string) => Promise<void>;
+  toggleCalendarTaskStatus: (id: string) => Promise<void>;
+
+  // Automated Due Reminders
+  runDueRemindersCheck: () => Promise<number>;
+
   resetToDefaultData: () => void;
   resetToDemoData: () => void;
+  restoreDatabase: (backupData: any) => Promise<{ success: boolean; count?: number; error?: string }>;
 }
 
 export const CrmContext = createContext<CrmContextType | undefined>(undefined);
@@ -224,6 +273,7 @@ export const ROUTE_TO_TAB: Record<string, string> = {
   '/projects': 'work',
   '/payments': 'payments',
   '/reports': 'reports',
+  '/calendar': 'calendar',
   '/data': 'datacenter',
   '/datacenter': 'datacenter',
   '/settings': 'settings',
@@ -236,6 +286,7 @@ export const TAB_TO_ROUTE: Record<string, string> = {
   work: '/work',
   payments: '/payments',
   reports: '/reports',
+  calendar: '/calendar',
   datacenter: '/data',
   settings: '/settings',
 };
@@ -314,6 +365,11 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activities, setActivities] = useState<Activity[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [settings, setSettings] = useState<BusinessSettings>(initialSettings);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [ratings, setRatings] = useState<Rating[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [calendarTasks, setCalendarTasks] = useState<CalendarTask[]>([]);
 
   // Firestore status
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -423,7 +479,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     let active = true;
     let initialCount = 0;
-    const requiredFeeds = 8;
+    const requiredFeeds = 12;
 
     const checkReady = () => {
       initialCount++;
@@ -534,6 +590,66 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
 
+    const unsubChatMessages = firestoreService.subscribeChatMessages(
+      (data) => {
+        if (active) {
+          setChatMessages(data);
+          checkReady();
+        }
+      },
+      (err) => {
+        if (active) setFirestoreError(String(err));
+      }
+    );
+
+    const unsubRatings = firestoreService.subscribeRatings(
+      (data) => {
+        if (active) {
+          setRatings(data);
+          checkReady();
+        }
+      },
+      (err) => {
+        if (active) setFirestoreError(String(err));
+      }
+    );
+
+    const unsubInvoices = firestoreService.subscribeInvoices(
+      (data) => {
+        if (active) {
+          setInvoices(data);
+          checkReady();
+        }
+      },
+      (err) => {
+        if (active) setFirestoreError(String(err));
+      }
+    );
+
+    const unsubReceipts = firestoreService.subscribeReceipts(
+      (data) => {
+        if (active) {
+          setReceipts(data);
+          checkReady();
+        }
+      },
+      (err) => {
+        if (active) setFirestoreError(String(err));
+      }
+    );
+
+    const unsubCalendarTasks = firestoreService.subscribeCalendarTasks(
+      (data) => {
+        if (active) {
+          setCalendarTasks(data);
+          checkReady();
+        }
+      },
+      (err) => {
+        if (active) setFirestoreError(String(err));
+      }
+    );
+
     // Timeout safety fallback: don't block user interface indefinitely
     const timeout = setTimeout(() => {
       if (active && isLoading) {
@@ -552,6 +668,11 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubNotifications();
       unsubActivities();
       unsubSettings();
+      unsubChatMessages();
+      unsubRatings();
+      unsubInvoices();
+      unsubReceipts();
+      unsubCalendarTasks();
     };
   }, []);
 
@@ -925,7 +1046,12 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const id = `wrk-${Date.now()}`;
     const { date, time } = getFormattedDateTime();
     const client = clients.find((c) => c.id === projectData.clientId);
-    const editor = editors.find((e) => e.id === projectData.assignedTo);
+    const resolvedEditorId =
+      projectData.assignedTo ||
+      (projectData as any).editorId ||
+      (projectData as any).assignedEditorId ||
+      null;
+    const editor = editors.find((e) => e.id === resolvedEditorId);
 
     const initialTimeline: TimelineEvent[] = [
       {
@@ -938,9 +1064,40 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
     ];
 
+    const quantity = Number(projectData.quantity) || 1;
+    const clientRate = Number(projectData.clientRate) || 0;
+    const editorRate = Number(projectData.editorRate) || 0;
+    const totalBilling =
+      typeof projectData.totalBilling === 'number' && !isNaN(projectData.totalBilling)
+        ? projectData.totalBilling
+        : quantity * clientRate;
+    const editorCost =
+      (projectData.workDoneBy === 'Assigned' && resolvedEditorId)
+        ? quantity * editorRate
+        : 0;
+    const profit = totalBilling - editorCost;
+
     const newProject: WorkProject = {
       ...projectData,
       id,
+      quantity,
+      clientRate,
+      editorRate,
+      totalBilling,
+      editorCost,
+      profit,
+      clientId: projectData.clientId,
+      assignedTo: resolvedEditorId || null,
+      editorId: resolvedEditorId || undefined,
+      assignedEditorId: resolvedEditorId || undefined,
+      workDoneBy: resolvedEditorId ? 'Assigned' : (projectData.workDoneBy || 'Me / Custom'),
+      dueDate: projectData.dueDate || '',
+      notes: projectData.notes || '',
+      driveFolderUrl: projectData.driveFolderUrl || '',
+      clientDownloadLink: projectData.clientDownloadLink || '',
+      clientUploadLink: projectData.clientUploadLink || '',
+      userDownloadLink: projectData.userDownloadLink || '',
+      userUploadLink: projectData.userUploadLink || '',
       clientUploadConfirmed: false,
       editorDownloadConfirmed: false,
       editorUploadConfirmed: false,
@@ -963,18 +1120,18 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       entityType: 'work',
       entityId: id,
       clientId: projectData.clientId,
-      editorId: projectData.assignedTo || undefined,
+      editorId: resolvedEditorId || undefined,
     });
 
     // Notify assigned editor
-    if (projectData.assignedTo) {
+    if (resolvedEditorId) {
       addNotification({
         type: 'work',
         message: `You were assigned a new project: "${newProject.name}"`,
         relatedWorkId: id,
         relatedClientId: projectData.clientId,
-        relatedEditorId: projectData.assignedTo,
-        recipientId: projectData.assignedTo,
+        relatedEditorId: resolvedEditorId,
+        recipientId: resolvedEditorId,
         recipientRole: 'editor',
         targetRole: 'editor',
       });
@@ -1016,6 +1173,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateWorkLinks = (
     workId: string,
     links: {
+      driveFolderUrl?: string;
       userDownloadLink?: string;
       userUploadLink?: string;
       clientDownloadLink?: string;
@@ -1029,7 +1187,24 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updateProject(workId, links);
   };
 
-  const updateWorkStatus = (workId: string, newStatus: WorkStatus, updatedBy: string) => {
+  const updateProjectDriveFolder = (workId: string, driveFolderUrl: string) => {
+    const trimmed = driveFolderUrl.trim();
+    updateProject(workId, { driveFolderUrl: trimmed });
+    const project = projects.find((p) => p.id === workId);
+    if (project) {
+      addActivity({
+        who: 'Admin',
+        action: 'Drive folder updated',
+        what: `Updated Google Drive folder for "${project.name}"`,
+        entityType: 'work',
+        entityId: workId,
+        clientId: project.clientId,
+        editorId: project.assignedTo || undefined,
+      });
+    }
+  };
+
+  const updateWorkStatus = (workId: string, newStatus: WorkStatus, updatedBy: string = 'Admin') => {
     const project = projects.find((p) => p.id === workId);
     if (!project) return;
 
@@ -1243,8 +1418,292 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  // 2. Client approves a project -> Notify Admin, Assigned Editor
-  const approveWork = async (workId: string, clientName?: string): Promise<boolean> => {
+  // ==========================================
+  // PROJECT LIVE CHAT OPERATIONS (ADMIN MODERATED)
+  // ==========================================
+
+  const toggleProjectChat = (workId: string, enabled: boolean) => {
+    const project = projects.find((p) => p.id === workId);
+    if (!project) return;
+    updateProject(workId, { chatEnabled: enabled });
+    addActivity({
+      who: 'Admin',
+      action: enabled ? 'Project chat enabled' : 'Project chat disabled',
+      what: `Admin ${enabled ? 'enabled' : 'disabled'} live chat for "${project.name}"`,
+      entityType: 'chat',
+      entityId: workId,
+      clientId: project.clientId,
+      editorId: project.assignedTo || undefined,
+      workId,
+    });
+  };
+
+  const clearProjectChat = async (workId: string): Promise<void> => {
+    setChatMessages((prev) => prev.filter((m) => m.projectId !== workId && m.workId !== workId));
+    await firestoreService.clearProjectChatMessages(workId, chatMessages);
+  };
+
+  const sendChatMessage = (params: {
+    projectId: string;
+    senderId: string;
+    senderRole: ChatSenderRole;
+    senderName: string;
+    message: string;
+    recipientRole?: 'client' | 'editor' | 'all';
+  }): { success: boolean; error?: string; isRestricted?: boolean; pending?: boolean; messageId?: string } => {
+    const { projectId, senderId, senderRole, senderName, message, recipientRole } = params;
+
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) {
+      return { success: false, error: 'Project not found.' };
+    }
+
+    // LEVEL 1: Automatic restriction filter
+    const moderation = evaluateMessageModeration(message);
+    if (moderation.isRestricted) {
+      return {
+        success: false,
+        isRestricted: true,
+        error:
+          moderation.reason ||
+          'Prohibited content detected. External contacts, payment talks, and personal conversations are not allowed in project chat.',
+      };
+    }
+
+    const messageId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const nowIso = new Date().toISOString();
+
+    // SENDER IS ADMIN (Direct send, no approval required)
+    if (senderRole === 'admin') {
+      const adminMsg: ChatMessage = {
+        id: messageId,
+        projectId: project.id,
+        workId: project.id,
+        clientId: project.clientId,
+        editorId: project.assignedTo || '',
+        senderId: 'admin',
+        senderRole: 'admin',
+        senderName: senderName || settings.businessName || 'Admin',
+        recipientId: recipientRole === 'client' ? project.clientId : (project.assignedTo || 'all'),
+        recipientRole: recipientRole || 'all',
+        message: message.trim(),
+        status: 'APPROVED',
+        createdAt: nowIso,
+        reviewedAt: nowIso,
+        reviewedByAdminId: 'admin',
+      };
+
+      setChatMessages((prev) => [...prev, adminMsg]);
+      firestoreService.createChatMessageDoc(adminMsg).catch((err) => {
+        console.error('Failed to create admin chat message:', err);
+      });
+
+      // Real-time recipient notifications
+      const notifs: (Omit<NotificationItem, 'id' | 'date' | 'time' | 'timestamp' | 'read'> & { id?: string })[] = [];
+
+      if (recipientRole === 'client' || recipientRole === 'all') {
+        notifs.push({
+          id: `notif-${Date.now()}-adm-cli`,
+          type: 'chat',
+          message: `Admin sent a message for project "${project.name}": "${message.slice(0, 60)}${message.length > 60 ? '...' : ''}"`,
+          relatedWorkId: project.id,
+          relatedClientId: project.clientId,
+          recipientId: project.clientId,
+          recipientRole: 'client',
+          targetRole: 'client',
+        });
+      }
+
+      if ((recipientRole === 'editor' || recipientRole === 'all') && project.assignedTo) {
+        notifs.push({
+          id: `notif-${Date.now() + 1}-adm-edt`,
+          type: 'chat',
+          message: `Admin sent a message for project "${project.name}": "${message.slice(0, 60)}${message.length > 60 ? '...' : ''}"`,
+          relatedWorkId: project.id,
+          relatedEditorId: project.assignedTo,
+          recipientId: project.assignedTo,
+          recipientRole: 'editor',
+          targetRole: 'editor',
+        });
+      }
+
+      if (notifs.length > 0) {
+        addNotifications(notifs);
+      }
+
+      return { success: true, pending: false, messageId };
+    }
+
+    // SENDER IS CLIENT OR EDITOR:
+    if (!project.assignedTo) {
+      return {
+        success: false,
+        error: 'Chat will become available after an Editor is assigned to this project.',
+      };
+    }
+
+    if (project.chatEnabled === false || project.status === 'Approved') {
+      return {
+        success: false,
+        error: 'Chat is currently disabled for this project.',
+      };
+    }
+
+    // LEVEL 2: Message created as PENDING_ADMIN_REVIEW
+    const targetRecipientId = senderRole === 'client' ? project.assignedTo : project.clientId;
+    const targetRecipientRole = senderRole === 'client' ? 'editor' : 'client';
+
+    const pendingMsg: ChatMessage = {
+      id: messageId,
+      projectId: project.id,
+      workId: project.id,
+      clientId: project.clientId,
+      editorId: project.assignedTo,
+      senderId,
+      senderRole,
+      senderName,
+      recipientId: targetRecipientId,
+      recipientRole: targetRecipientRole,
+      message: message.trim(),
+      status: 'PENDING_ADMIN_REVIEW',
+      createdAt: nowIso,
+    };
+
+    setChatMessages((prev) => [...prev, pendingMsg]);
+    firestoreService.createChatMessageDoc(pendingMsg).catch((err) => {
+      console.error('Failed to create pending chat message:', err);
+    });
+
+    // Notify Admin in real-time
+    const clientObj = clients.find((c) => c.id === project.clientId);
+    const clientName = clientObj?.name || 'Client';
+    const roleLabel = senderRole === 'client' ? 'Client' : 'Editor';
+
+    addNotification({
+      id: `notif-${Date.now()}-chat-pending`,
+      type: 'chat',
+      message: `New ${roleLabel} message awaiting approval from ${senderName} for "${project.name}" (Client: ${clientName}, Project ID: ${project.id}): "${message.slice(0, 60)}${message.length > 60 ? '...' : ''}"`,
+      recipientId: 'admin',
+      recipientRole: 'admin',
+      targetRole: 'admin',
+      relatedWorkId: project.id,
+      relatedClientId: project.clientId,
+      relatedEditorId: project.assignedTo,
+    });
+
+    addActivity({
+      who: senderName,
+      action: 'Chat message submitted for review',
+      what: `Message from ${senderName} on "${project.name}" awaiting Admin approval`,
+      entityType: 'chat',
+      entityId: messageId,
+      clientId: project.clientId,
+      editorId: project.assignedTo,
+      workId: project.id,
+    });
+
+    return { success: true, pending: true, messageId };
+  };
+
+  const approveChatMessage = async (messageId: string): Promise<boolean> => {
+    const msg = chatMessages.find((m) => m.id === messageId);
+    if (!msg) return false;
+
+    const project = projects.find((p) => p.id === msg.projectId || p.id === msg.workId);
+    const nowIso = new Date().toISOString();
+
+    const updates: Partial<ChatMessage> = {
+      status: 'APPROVED',
+      reviewedAt: nowIso,
+      reviewedByAdminId: 'admin',
+    };
+
+    setChatMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, ...updates } : m))
+    );
+    await firestoreService.updateChatMessageDoc(messageId, updates);
+
+    // Deliver to recipient in real-time & notify
+    addNotification({
+      id: `notif-${Date.now()}-approved-msg`,
+      type: 'chat',
+      message: `New message from ${msg.senderName} on "${project?.name || 'Project'}": "${msg.message.slice(0, 60)}${msg.message.length > 60 ? '...' : ''}"`,
+      recipientId: msg.recipientId,
+      recipientRole: msg.recipientRole === 'all' ? 'admin' : msg.recipientRole,
+      targetRole: msg.recipientRole === 'all' ? 'admin' : msg.recipientRole,
+      relatedWorkId: msg.projectId,
+      relatedClientId: msg.clientId,
+      relatedEditorId: msg.editorId,
+    });
+
+    addActivity({
+      who: 'Admin',
+      action: 'Chat message approved',
+      what: `Admin approved message from ${msg.senderName} to ${msg.recipientRole} for "${project?.name || 'Project'}"`,
+      entityType: 'chat',
+      entityId: messageId,
+      clientId: msg.clientId,
+      editorId: msg.editorId,
+      workId: msg.projectId,
+    });
+
+    return true;
+  };
+
+  const rejectChatMessage = async (messageId: string, reason?: string): Promise<boolean> => {
+    const msg = chatMessages.find((m) => m.id === messageId);
+    if (!msg) return false;
+
+    const project = projects.find((p) => p.id === msg.projectId || p.id === msg.workId);
+    const nowIso = new Date().toISOString();
+
+    const updates: Partial<ChatMessage> = {
+      status: 'REJECTED',
+      reviewedAt: nowIso,
+      reviewedByAdminId: 'admin',
+      rejectionReason: reason || 'Your message was not approved by Admin.',
+    };
+
+    setChatMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, ...updates } : m))
+    );
+    await firestoreService.updateChatMessageDoc(messageId, updates);
+
+    // Notify sender that message was not approved (do NOT notify recipient)
+    addNotification({
+      id: `notif-${Date.now()}-rejected-msg`,
+      type: 'chat',
+      message: `Your message was not approved by Admin for "${project?.name || 'Project'}".`,
+      recipientId: msg.senderId,
+      recipientRole: msg.senderRole === 'client' ? 'client' : 'editor',
+      targetRole: msg.senderRole === 'client' ? 'client' : 'editor',
+      relatedWorkId: msg.projectId,
+      relatedClientId: msg.clientId,
+      relatedEditorId: msg.editorId,
+    });
+
+    addActivity({
+      who: 'Admin',
+      action: 'Chat message rejected',
+      what: `Admin rejected message from ${msg.senderName} for "${project?.name || 'Project'}"`,
+      entityType: 'chat',
+      entityId: messageId,
+      clientId: msg.clientId,
+      editorId: msg.editorId,
+      workId: msg.projectId,
+    });
+
+    return true;
+  };
+
+  const deleteChatMessage = async (messageId: string): Promise<boolean> => {
+    setChatMessages((prev) => prev.filter((m) => m.id !== messageId));
+    await firestoreService.deleteChatMessageDoc(messageId);
+    return true;
+  };
+
+  // 2. Client approves a project -> Notify Admin, Assigned Editor, disable & clear chat
+  const approveWork = (workId: string, clientName?: string): boolean => {
     const project = projects.find((p) => p.id === workId);
     if (!project) return false;
     if (project.status === 'Approved' || project.reviewStatus === 'Approved') return true;
@@ -1268,31 +1727,15 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       reviewNotes: 'Deliverable approved by client.',
       approvedAt: formatted,
       approvedBy: resolvedClientName,
+      chatEnabled: false, // Immediately disable chat upon client approval
       timeline: [...project.timeline, newTimelineItem],
-      chatDisabled: true,
-      chatDisabledAt: formatted,
-      chatClosedReason: 'Project approved by client',
     };
 
-    // Step 1: Save project status = APPROVED to Firestore
-    try {
-      await firestoreService.updateProjectDoc(workId, updates);
-    } catch (err) {
-      console.error('Failed to update project approval in Firestore:', err);
-      return false;
-    }
+    updateProject(workId, updates);
 
-    // Step 2: Update local state immediately after confirmed write
-    setProjects((prev) => prev.map((p) => (p.id === workId ? { ...p, ...updates } : p)));
+    // Automatically clear/delete ALL chat messages belonging ONLY to that project
+    clearProjectChat(workId);
 
-    // Step 3: Delete chat messages for that project from Firestore
-    try {
-      await firestoreService.clearProjectChatMessages(workId);
-    } catch (err) {
-      console.error('Failed to clear project chat messages upon approval:', err);
-    }
-
-    // Step 4: Create audit activity
     addActivity({
       who: resolvedClientName,
       action: 'Work approved',
@@ -1303,7 +1746,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       editorId: project.assignedTo || undefined,
     });
 
-    // Step 5: Notify: Admin and Assigned Editor
+    // Notify: Admin and Assigned Editor
     const notifs: (Omit<NotificationItem, 'id' | 'date' | 'time' | 'timestamp' | 'read'> & { id?: string })[] = [
       {
         id: `notif-${Date.now()}-adm`,
@@ -1334,137 +1777,6 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     addNotifications(notifs);
     return true;
-  };
-
-  // ==========================================
-  // CLIENT-EDITOR PROJECT CHAT ACTIONS
-  // ==========================================
-  const sendProjectChatMessage = async (params: {
-    projectId: string;
-    senderId: string;
-    senderRole: ChatSenderRole;
-    senderName: string;
-    message: string;
-  }): Promise<{ success: boolean; error?: string; messageId?: string }> => {
-    const { projectId, senderId, senderRole, senderName, message } = params;
-
-    const project = projects.find((p) => p.id === projectId);
-    if (!project) {
-      return { success: false, error: 'Project not found.' };
-    }
-
-    if (project.status === 'Approved' || project.reviewStatus === 'Approved') {
-      return { success: false, error: 'Chat closed — this project has been approved.' };
-    }
-
-    if (project.chatDisabled) {
-      return { success: false, error: 'Chat is currently disabled for this project.' };
-    }
-
-    if (!project.assignedTo || project.workDoneBy === 'Self') {
-      return { success: false, error: 'Chat is only available when an editor is assigned.' };
-    }
-
-    // Moderate content before sending
-    const validation = validateChatMessage(message);
-    if (!validation.allowed) {
-      return { success: false, error: validation.reason };
-    }
-
-    const messageId = `msg-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newMsg: ChatMessage = {
-      id: messageId,
-      projectId,
-      workId: projectId,
-      clientId: project.clientId,
-      editorId: project.assignedTo,
-      senderId,
-      senderRole,
-      senderName,
-      message: message.trim(),
-      createdAt: new Date().toISOString(),
-      status: 'sent',
-    };
-
-    try {
-      await firestoreService.sendChatMessageDoc(newMsg);
-
-      // Real-time recipient notification
-      if (senderRole === 'client' && project.assignedTo) {
-        addNotification({
-          type: 'work',
-          message: `New message from ${senderName} on "${project.name}"`,
-          relatedWorkId: projectId,
-          relatedClientId: project.clientId,
-          relatedEditorId: project.assignedTo,
-          recipientId: project.assignedTo,
-          recipientRole: 'editor',
-          targetRole: 'editor',
-        });
-      } else if (senderRole === 'editor') {
-        addNotification({
-          type: 'work',
-          message: `New message from ${senderName} on "${project.name}"`,
-          relatedWorkId: projectId,
-          relatedClientId: project.clientId,
-          relatedEditorId: project.assignedTo || undefined,
-          recipientId: project.clientId,
-          recipientRole: 'client',
-          targetRole: 'client',
-        });
-      }
-
-      return { success: true, messageId };
-    } catch (err: any) {
-      console.error('Failed to send chat message:', err);
-      return { success: false, error: err?.message || 'Failed to send message.' };
-    }
-  };
-
-  const deleteChatMessage = async (messageId: string): Promise<void> => {
-    try {
-      await firestoreService.deleteChatMessageDoc(messageId);
-    } catch (err) {
-      console.error('Failed to delete chat message:', err);
-      throw err;
-    }
-  };
-
-  const clearProjectChat = async (projectId: string): Promise<number> => {
-    try {
-      const deletedCount = await firestoreService.clearProjectChatMessages(projectId);
-      const pr = projects.find((p) => p.id === projectId);
-      addActivity({
-        who: 'Admin',
-        action: 'Chat cleared',
-        what: `Cleared chat history (${deletedCount} messages) for project "${pr?.name || projectId}"`,
-        entityType: 'work',
-        entityId: projectId,
-      });
-      return deletedCount;
-    } catch (err) {
-      console.error('Failed to clear project chat:', err);
-      throw err;
-    }
-  };
-
-  const toggleProjectChatDisabled = async (projectId: string, disabled: boolean): Promise<void> => {
-    const { formatted } = getFormattedDateTime();
-    const updates: Partial<WorkProject> = {
-      chatDisabled: disabled,
-      chatDisabledAt: disabled ? formatted : undefined,
-      chatClosedReason: disabled ? 'Disabled by administrator' : undefined,
-    };
-    updateProject(projectId, updates);
-
-    const pr = projects.find((p) => p.id === projectId);
-    addActivity({
-      who: 'Admin',
-      action: disabled ? 'Chat disabled' : 'Chat enabled',
-      what: `${disabled ? 'Disabled' : 'Enabled'} client-editor chat for "${pr?.name || projectId}"`,
-      entityType: 'work',
-      entityId: projectId,
-    });
   };
 
   // 3. Client requests revision -> Notify Admin, Assigned Editor
@@ -1597,7 +1909,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addActivity({
       who: resolvedClientName,
       action: 'Data uploaded',
-      what: `${resolvedClientName} uploaded data for "${project.name}"`,
+      what: `${resolvedClientName} uploaded data for "${project.name}" (ID: ${project.id})`,
       entityType: 'work',
       entityId: workId,
       clientId: project.clientId,
@@ -1609,7 +1921,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       {
         id: `notif-${Date.now()}-adm`,
         type: 'confirmation',
-        message: `${resolvedClientName} uploaded data for ${project.name}.`,
+        message: `${resolvedClientName} uploaded project data for "${project.name}" (ID: ${project.id})${notes ? `: ${notes}` : ''}.`,
         relatedWorkId: workId,
         relatedClientId: project.clientId,
         relatedEditorId: project.assignedTo || undefined,
@@ -1623,7 +1935,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notifs.push({
         id: `notif-${Date.now() + 1}-edt`,
         type: 'confirmation',
-        message: `${resolvedClientName} uploaded data for ${project.name}.`,
+        message: `${resolvedClientName} uploaded project data for "${project.name}" (ID: ${project.id})${notes ? `: ${notes}` : ''}.`,
         relatedWorkId: workId,
         relatedClientId: project.clientId,
         relatedEditorId: project.assignedTo,
@@ -1632,6 +1944,94 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         targetRole: 'editor',
       });
     }
+
+    addNotifications(notifs);
+    return true;
+  };
+
+  // Editor uploads file (Edited Video / Revision / Final Deliverable) to shared Google Drive folder -> Notify Admin & Client
+  const submitEditorFileUpload = (params: {
+    workId: string;
+    editorId: string;
+    editorName?: string;
+    uploadType: 'Edited Video' | 'Revision' | 'Final Deliverable';
+    notes?: string;
+  }): boolean => {
+    const { workId, editorId, editorName, uploadType, notes } = params;
+    const project = projects.find((p) => p.id === workId);
+    if (!project) return false;
+
+    const editorObj = editors.find((e) => e.id === editorId);
+    const resolvedEditorName = editorName || editorObj?.name || 'Assigned Editor';
+    const { date, time, formatted } = getFormattedDateTime();
+
+    const actionText = notes
+      ? `${uploadType} uploaded to Drive: ${notes}`
+      : `${uploadType} uploaded to Google Drive by ${resolvedEditorName}`;
+
+    const newTimelineItem: TimelineEvent = {
+      id: `tm-${Date.now()}`,
+      person: resolvedEditorName,
+      action: actionText,
+      date,
+      time,
+      status: uploadType === 'Final Deliverable' ? 'Completed' : project.status,
+    };
+
+    const updates: Partial<WorkProject> = {
+      editorUploadConfirmed: true,
+      editorUploadConfirmedAt: formatted,
+      timeline: [...project.timeline, newTimelineItem],
+    };
+
+    if (uploadType === 'Final Deliverable') {
+      updates.status = 'Completed';
+      updates.reviewStatus = 'Awaiting Client Review';
+    } else if (uploadType === 'Revision') {
+      updates.revisionStatus = 'Revision Uploaded';
+      updates.revisionUploadedDate = formatted;
+      if (notes) {
+        updates.revisionNotes = notes;
+      }
+    }
+
+    updateProject(workId, updates);
+
+    addActivity({
+      who: resolvedEditorName,
+      action: 'File uploaded',
+      what: `${resolvedEditorName} uploaded ${uploadType} for "${project.name}" (ID: ${project.id})`,
+      entityType: 'work',
+      entityId: workId,
+      clientId: project.clientId,
+      editorId: project.assignedTo || editorId,
+    });
+
+    // Notify: Admin and Client
+    const notifs: (Omit<NotificationItem, 'id' | 'date' | 'time' | 'timestamp' | 'read'> & { id?: string })[] = [
+      {
+        id: `notif-${Date.now()}-adm`,
+        type: 'work',
+        message: `${resolvedEditorName} uploaded ${uploadType} for "${project.name}" (ID: ${project.id})${notes ? `: ${notes}` : ''}.`,
+        relatedWorkId: workId,
+        relatedClientId: project.clientId,
+        relatedEditorId: project.assignedTo || editorId,
+        recipientId: 'admin',
+        recipientRole: 'admin',
+        targetRole: 'admin',
+      },
+      {
+        id: `notif-${Date.now() + 1}-cli`,
+        type: 'work',
+        message: `${resolvedEditorName} uploaded ${uploadType} for "${project.name}" (ID: ${project.id})${notes ? `: ${notes}` : ''}.`,
+        relatedWorkId: workId,
+        relatedClientId: project.clientId,
+        relatedEditorId: project.assignedTo || editorId,
+        recipientId: project.clientId,
+        recipientRole: 'client',
+        targetRole: 'client',
+      },
+    ];
 
     addNotifications(notifs);
     return true;
@@ -2036,9 +2436,12 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [projects, clientPayments, editorPayments, expenses]);
 
   const getClientStats = (clientId: string) => {
-    const clientProjects = projects.filter((p) => p.clientId === clientId);
+    const clientProjects = projects.filter((p) => {
+      const pClientId = p.clientId || (p as any).client_id || (p as any).client?.id;
+      return Boolean(pClientId && pClientId === clientId);
+    });
     const totalWork = clientProjects.length;
-    const completed = clientProjects.filter((p) => p.status === 'Completed' || p.status === 'Delivered').length;
+    const completed = clientProjects.filter((p) => p.status === 'Completed' || p.status === 'Delivered' || p.status === 'Approved').length;
     const pending = totalWork - completed;
 
     const totalBilling = clientProjects.reduce((acc, p) => acc + (p.totalBilling || 0), 0);
@@ -2065,10 +2468,13 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const getEditorStats = (editorId: string) => {
-    const editorProjects = projects.filter((p) => p.assignedTo === editorId && p.workDoneBy === 'Assigned');
+    const editorProjects = projects.filter((p) => {
+      const assignedEditorId = p.assignedTo || (p as any).editorId || (p as any).assignedEditorId;
+      return Boolean(assignedEditorId && assignedEditorId === editorId);
+    });
     const assignedWork = editorProjects.length;
     const inProgress = editorProjects.filter((p) => p.status === 'In Progress' || p.status === 'Revision Required').length;
-    const completed = editorProjects.filter((p) => p.status === 'Completed' || p.status === 'Delivered').length;
+    const completed = editorProjects.filter((p) => p.status === 'Completed' || p.status === 'Delivered' || p.status === 'Approved').length;
     const pending = assignedWork - completed;
 
     const totalCost = editorProjects.reduce((acc, p) => acc + (p.quantity * (p.editorRate || 0)), 0);
@@ -2095,6 +2501,273 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
+  // ------------------------------------------
+  // Feature: Ratings System
+  // ------------------------------------------
+  const addRating = async (ratingData: Omit<Rating, 'id' | 'createdAt'>): Promise<Rating> => {
+    const id = `rat-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const createdAt = new Date().toISOString();
+    const newRating: Rating = { ...ratingData, id, createdAt };
+    setRatings((prev) => [newRating, ...prev]);
+    await firestoreService.createRatingDoc(newRating);
+
+    addActivity({
+      who: ratingData.raterName || 'User',
+      action: 'submitted',
+      what: `${ratingData.rating}-star review for project "${ratingData.projectName}"`,
+      entityType: 'rating',
+      entityId: id,
+      clientId: ratingData.clientId,
+      editorId: ratingData.editorId,
+      workId: ratingData.projectId,
+    });
+
+    addNotification({
+      type: 'rating',
+      message: `${ratingData.raterName} submitted a ${ratingData.rating}★ rating for "${ratingData.projectName}"`,
+      recipientRole: 'admin',
+      targetRole: 'admin',
+      relatedWorkId: ratingData.projectId,
+      relatedClientId: ratingData.clientId,
+      relatedEditorId: ratingData.editorId,
+    });
+
+    return newRating;
+  };
+
+  // ------------------------------------------
+  // Feature: Invoices System
+  // ------------------------------------------
+  const createInvoice = async (
+    invoiceData: Omit<Invoice, 'id' | 'createdAt'> | Invoice
+  ): Promise<Invoice> => {
+    const id =
+      'id' in invoiceData && invoiceData.id
+        ? invoiceData.id
+        : `inv-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const createdAt =
+      'createdAt' in invoiceData && invoiceData.createdAt
+        ? invoiceData.createdAt
+        : new Date().toISOString();
+
+    const subtotal = Number(invoiceData.subtotal) || 0;
+    const tax = Number(invoiceData.tax) || 0;
+    const total = Number(invoiceData.total) || subtotal + tax;
+    const paidAmount = Math.max(0, Number(invoiceData.paidAmount) || 0);
+    const dueAmount = Math.max(0, total - paidAmount);
+
+    // Calculate mathematically consistent payment status
+    const computedStatus: PaymentStatus =
+      dueAmount <= 0 && total > 0
+        ? 'Paid'
+        : paidAmount > 0
+        ? 'Partial'
+        : 'Pending';
+
+    const newInvoice: Invoice = {
+      ...invoiceData,
+      id,
+      createdAt,
+      subtotal,
+      tax,
+      total,
+      paidAmount,
+      dueAmount,
+      paymentStatus: invoiceData.paymentStatus || computedStatus,
+    };
+
+    setInvoices((prev) => {
+      const exists = prev.some((inv) => inv.id === id);
+      if (exists) {
+        return prev.map((inv) => (inv.id === id ? newInvoice : inv));
+      }
+      return [newInvoice, ...prev];
+    });
+
+    await firestoreService.createInvoiceDoc(newInvoice);
+
+    addActivity({
+      who: settings.adminName || 'Admin',
+      action: 'generated invoice',
+      what: `Invoice #${newInvoice.invoiceNumber} for ${newInvoice.clientName} (${settings.currencySymbol || '₹'}${newInvoice.total})`,
+      entityType: 'invoice',
+      entityId: id,
+      clientId: newInvoice.clientId,
+      workId: newInvoice.workId,
+    });
+
+    addNotification({
+      type: 'invoice',
+      message: `Invoice #${newInvoice.invoiceNumber} generated for ${newInvoice.clientName} (${settings.currencySymbol || '₹'}${newInvoice.total})`,
+      recipientRole: 'admin',
+      targetRole: 'admin',
+      relatedClientId: newInvoice.clientId,
+      relatedWorkId: newInvoice.workId,
+    });
+
+    return newInvoice;
+  };
+
+  const addInvoice = createInvoice;
+
+  const updateInvoice = async (id: string, updates: Partial<Invoice>): Promise<void> => {
+    setInvoices((prev) => prev.map((inv) => (inv.id === id ? { ...inv, ...updates } : inv)));
+    await firestoreService.updateInvoiceDoc(id, updates);
+  };
+
+  const deleteInvoice = async (id: string): Promise<void> => {
+    setInvoices((prev) => prev.filter((inv) => inv.id !== id));
+    await firestoreService.deleteInvoiceDoc(id);
+  };
+
+  // ------------------------------------------
+  // Feature: Receipts System
+  // ------------------------------------------
+  const addReceipt = async (receiptData: Omit<Receipt, 'id' | 'createdAt'>): Promise<Receipt> => {
+    const id = `rec-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const createdAt = new Date().toISOString();
+    const newReceipt: Receipt = { ...receiptData, id, createdAt };
+    setReceipts((prev) => [newReceipt, ...prev]);
+    await firestoreService.createReceiptDoc(newReceipt);
+
+    addActivity({
+      who: settings.adminName || 'Admin',
+      action: 'issued receipt',
+      what: `Receipt #${newReceipt.receiptNumber} for ${newReceipt.clientName} (${settings.currencySymbol || '₹'}${newReceipt.amountReceived})`,
+      entityType: 'receipt',
+      entityId: id,
+      clientId: newReceipt.clientId,
+      workId: newReceipt.workId,
+    });
+
+    return newReceipt;
+  };
+
+  const deleteReceipt = async (id: string): Promise<void> => {
+    setReceipts((prev) => prev.filter((r) => r.id !== id));
+    await firestoreService.deleteReceiptDoc(id);
+  };
+
+  // ------------------------------------------
+  // Feature: Calendar Admin Tasks
+  // ------------------------------------------
+  const addCalendarTask = async (taskData: Omit<CalendarTask, 'id' | 'createdAt'>): Promise<CalendarTask> => {
+    const id = `task_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    const createdAt = new Date().toISOString();
+    const newTask: CalendarTask = {
+      ...taskData,
+      id,
+      createdAt,
+      createdBy: taskData.createdBy || settings.adminName || 'Admin',
+    };
+    setCalendarTasks((prev) => [newTask, ...prev]);
+    await firestoreService.createCalendarTaskDoc(newTask);
+
+    addActivity({
+      who: settings.adminName || 'Admin',
+      action: 'created task',
+      what: `Created calendar task "${newTask.title}" for ${newTask.date}`,
+      entityType: 'task',
+      entityId: id,
+    });
+
+    return newTask;
+  };
+
+  const updateCalendarTask = async (id: string, updates: Partial<CalendarTask>): Promise<void> => {
+    const current = calendarTasks.find((t) => t.id === id);
+    const updated = {
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    setCalendarTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...updated } : t)));
+    await firestoreService.updateCalendarTaskDoc(id, updated);
+
+    if (current) {
+      addActivity({
+        who: settings.adminName || 'Admin',
+        action: 'updated task',
+        what: `Updated calendar task "${current.title}"`,
+        entityType: 'task',
+        entityId: id,
+      });
+    }
+  };
+
+  const deleteCalendarTask = async (id: string): Promise<void> => {
+    const taskToDelete = calendarTasks.find((t) => t.id === id);
+    setCalendarTasks((prev) => prev.filter((t) => t.id !== id));
+    await firestoreService.deleteCalendarTaskDoc(id);
+
+    if (taskToDelete) {
+      addActivity({
+        who: settings.adminName || 'Admin',
+        action: 'deleted task',
+        what: `Deleted calendar task "${taskToDelete.title}"`,
+        entityType: 'task',
+        entityId: id,
+      });
+    }
+  };
+
+  const toggleCalendarTaskStatus = async (id: string): Promise<void> => {
+    const task = calendarTasks.find((t) => t.id === id);
+    if (!task) return;
+    const newStatus: CalendarTask['status'] = task.status === 'Completed' ? 'Pending' : 'Completed';
+    await updateCalendarTask(id, { status: newStatus });
+  };
+
+  // ------------------------------------------
+  // Feature: Editor Availability Status
+  // ------------------------------------------
+  const updateEditorAvailability = async (
+    editorId: string,
+    availability: EditorAvailability,
+    note?: string
+  ): Promise<void> => {
+    setEditors((prev) =>
+      prev.map((ed) =>
+        ed.id === editorId
+          ? { ...ed, availability, availabilityNote: note !== undefined ? note : ed.availabilityNote }
+          : ed
+      )
+    );
+    await firestoreService.updateEditorDoc(editorId, {
+      availability,
+      availabilityNote: note !== undefined ? note : undefined,
+    });
+
+    const editorObj = editors.find((e) => e.id === editorId);
+    addActivity({
+      who: editorObj?.name || 'Editor',
+      action: 'updated status',
+      what: `Availability status set to ${availability}`,
+      entityType: 'editor',
+      entityId: editorId,
+      editorId,
+    });
+  };
+
+  // ------------------------------------------
+  // Feature: Automated Due Reminders
+  // ------------------------------------------
+  const runDueRemindersCheck = useCallback(async (): Promise<number> => {
+    if (projects.length === 0) return 0;
+    return await processDueReminders(projects, clients, editors, notifications, (newNotif) => {
+      setNotifications((prev) => [newNotif, ...prev]);
+    });
+  }, [projects, clients, editors, notifications]);
+
+  // Periodic and on-mount automated due reminders check
+  useEffect(() => {
+    if (!isLoading && projects.length > 0) {
+      const timer = setTimeout(() => {
+        runDueRemindersCheck().catch(() => {});
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, projects.length]);
+
   // Safe reset to empty database (does NOT restore demo data!)
   const resetToDefaultData = () => {
     setClients([]);
@@ -2106,6 +2779,101 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActivities([]);
     setNotifications([]);
     setSettings(initialSettings);
+  };
+
+  // Full Database Replacement & Restore from Backup
+  const restoreDatabase = async (backupData: any): Promise<{ success: boolean; count?: number; error?: string }> => {
+    try {
+      // 1. Process and normalize restored datasets
+      const restoredClients: Client[] = Array.isArray(backupData.clients) ? backupData.clients : [];
+      const restoredEditors: Editor[] = Array.isArray(backupData.editors) ? backupData.editors : [];
+      const restoredProjects: WorkProject[] = Array.isArray(backupData.projects) ? backupData.projects : [];
+
+      let restoredClientPayments: ClientPayment[] = [];
+      let restoredEditorPayments: EditorPayment[] = [];
+
+      if (Array.isArray(backupData.clientPayments) && backupData.clientPayments.length > 0) {
+        restoredClientPayments = backupData.clientPayments;
+      }
+      if (Array.isArray(backupData.editorPayments) && backupData.editorPayments.length > 0) {
+        restoredEditorPayments = backupData.editorPayments;
+      }
+      if (Array.isArray(backupData.payments) && restoredClientPayments.length === 0 && restoredEditorPayments.length === 0) {
+        for (const p of backupData.payments) {
+          if (p.paymentCategory === 'editor' || (!p.paymentCategory && p.editorId && !p.clientId)) {
+            restoredEditorPayments.push(p);
+          } else {
+            restoredClientPayments.push(p);
+          }
+        }
+      }
+
+      const restoredExpenses: Expense[] = Array.isArray(backupData.expenses) ? backupData.expenses : [];
+      const restoredActivities: Activity[] = Array.isArray(backupData.activities) ? backupData.activities : [];
+      const restoredNotifications: NotificationItem[] = Array.isArray(backupData.notifications) ? backupData.notifications : [];
+      const restoredChatMessages: ChatMessage[] = Array.isArray(backupData.chatMessages) ? backupData.chatMessages : [];
+      const restoredRatings: Rating[] = Array.isArray(backupData.ratings) ? backupData.ratings : [];
+      const restoredInvoices: Invoice[] = Array.isArray(backupData.invoices) ? backupData.invoices : [];
+      const restoredReceipts: Receipt[] = Array.isArray(backupData.receipts) ? backupData.receipts : [];
+      const restoredSettings: BusinessSettings = backupData.settings && typeof backupData.settings === 'object'
+        ? { ...initialSettings, ...backupData.settings }
+        : settings;
+
+      // 2. Perform Firestore atomic replacement
+      await firestoreService.restoreDatabaseToFirestore({
+        clients: restoredClients,
+        editors: restoredEditors,
+        projects: restoredProjects,
+        clientPayments: restoredClientPayments,
+        editorPayments: restoredEditorPayments,
+        expenses: restoredExpenses,
+        notifications: restoredNotifications,
+        activities: restoredActivities,
+        revisions: Array.isArray(backupData.revisions) ? backupData.revisions : [],
+        sharedLinks: Array.isArray(backupData.sharedLinks) ? backupData.sharedLinks : [],
+        chatMessages: restoredChatMessages,
+        ratings: restoredRatings,
+        invoices: restoredInvoices,
+        receipts: restoredReceipts,
+        adminUsers: Array.isArray(backupData.adminUsers) ? backupData.adminUsers : [],
+        settings: restoredSettings,
+      });
+
+      // 3. Immediately update in-memory React state for instantaneous UI sync across all views
+      setClients(restoredClients);
+      setEditors(restoredEditors);
+      setProjects(restoredProjects);
+      setClientPayments(restoredClientPayments);
+      setEditorPayments(restoredEditorPayments);
+      setExpenses(restoredExpenses);
+      setActivities(restoredActivities);
+      setNotifications(restoredNotifications);
+      setChatMessages(restoredChatMessages);
+      setRatings(restoredRatings);
+      setInvoices(restoredInvoices);
+      setReceipts(restoredReceipts);
+      setSettings(restoredSettings);
+
+      // 4. Log the restore activity
+      const totalCount =
+        restoredClients.length +
+        restoredEditors.length +
+        restoredProjects.length +
+        restoredClientPayments.length +
+        restoredEditorPayments.length;
+
+      addActivity({
+        who: restoredSettings.adminName || 'Admin',
+        action: 'Database Restored',
+        what: `Restored database from backup (${restoredClients.length} clients, ${restoredProjects.length} projects, ${restoredEditors.length} editors, ${restoredClientPayments.length + restoredEditorPayments.length} payments)`,
+        entityType: 'settings',
+      });
+
+      return { success: true, count: totalCount };
+    } catch (err: any) {
+      console.error('Failed to restore database:', err);
+      return { success: false, error: err?.message || 'Failed to restore database to Firestore' };
+    }
   };
 
   return (
@@ -2120,6 +2888,10 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activities,
         notifications,
         settings,
+        chatMessages,
+        ratings,
+        invoices,
+        receipts,
         isLoading,
         firestoreError,
         activeTab,
@@ -2146,20 +2918,24 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateProject,
         deleteProject,
         updateWorkLinks,
+        updateProjectDriveFolder,
         updateWorkStatus,
         confirmAction,
         resetConfirmation,
         requestRevision,
         updateRevisionStatus,
         submitEditorCompletion,
+        submitEditorFileUpload,
         approveWork,
         submitClientRevision,
         submitClientDataUpload,
         updateProjectReview,
-        sendProjectChatMessage,
+        sendChatMessage,
+        approveChatMessage,
+        rejectChatMessage,
         deleteChatMessage,
+        toggleProjectChat,
         clearProjectChat,
-        toggleProjectChatDisabled,
         addClientPayment,
         updateClientPayment,
         deleteClientPayment,
@@ -2180,8 +2956,23 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         financialMetrics,
         getClientStats,
         getEditorStats,
+        addRating,
+        createInvoice,
+        addInvoice,
+        updateInvoice,
+        deleteInvoice,
+        addReceipt,
+        deleteReceipt,
+        updateEditorAvailability,
+        calendarTasks,
+        addCalendarTask,
+        updateCalendarTask,
+        deleteCalendarTask,
+        toggleCalendarTaskStatus,
+        runDueRemindersCheck,
         resetToDefaultData,
         resetToDemoData: resetToDefaultData,
+        restoreDatabase,
       }}
     >
       {children}

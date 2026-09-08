@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { X, Briefcase, Save, Link as LinkIcon, DollarSign, UserCheck } from 'lucide-react';
+import { X, Briefcase, Save, Folder, DollarSign, UserCheck } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
-import { WorkProject, WorkType, ProjectStatus, WorkDoneBy } from '../../types';
+import { WorkProject, WorkType, ProjectStatus, WorkDoneBy, ProjectPriority } from '../../types';
+import {
+  isValidGoogleDriveFolderUrl,
+  getProjectDriveFolderUrl,
+  DRIVE_FOLDER_VALIDATION_ERROR,
+} from '../../utils/driveUtils';
 
 interface WorkFormModalProps {
   isOpen: boolean;
@@ -28,13 +33,12 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
   const [editorRate, setEditorRate] = useState<number>(settings.defaultEditorRate || 900);
   const [status, setStatus] = useState<ProjectStatus>('Pending');
   const [dueDate, setDueDate] = useState<string>('');
+  const [priority, setPriority] = useState<ProjectPriority>('Medium');
   const [notes, setNotes] = useState('');
 
-  // 4 Links
-  const [userDownloadLink, setUserDownloadLink] = useState('');
-  const [userUploadLink, setUserUploadLink] = useState('');
-  const [clientDownloadLink, setClientDownloadLink] = useState('');
-  const [clientUploadLink, setClientUploadLink] = useState('');
+  // Single Canonical Project Google Drive Folder
+  const [driveFolderUrl, setDriveFolderUrl] = useState('');
+  const [driveUrlError, setDriveUrlError] = useState<string | null>(null);
 
   // All 11 Base Work Types + dynamic settings
   const availableWorkTypes: WorkType[] = [
@@ -76,16 +80,17 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
       setWorkType(workToEdit.workType);
       setQuantity(workToEdit.quantity);
       setClientRate(workToEdit.clientRate);
-      setWorkDoneBy(workToEdit.workDoneBy || 'Me / Custom');
-      setAssignedTo(workToEdit.assignedTo || '');
+      const resolvedEditorId = workToEdit.assignedTo || (workToEdit as any).editorId || (workToEdit as any).assignedEditorId || '';
+      const resolvedWorkDoneBy = workToEdit.workDoneBy || (resolvedEditorId ? 'Assigned' : 'Me / Custom');
+      setWorkDoneBy(resolvedWorkDoneBy);
+      setAssignedTo(resolvedEditorId);
       setEditorRate(workToEdit.editorRate || settings.defaultEditorRate || 900);
       setStatus(workToEdit.status);
       setDueDate(workToEdit.dueDate || '');
+      setPriority(workToEdit.priority || 'Medium');
       setNotes(workToEdit.notes || '');
-      setUserDownloadLink(workToEdit.userDownloadLink || '');
-      setUserUploadLink(workToEdit.userUploadLink || '');
-      setClientDownloadLink(workToEdit.clientDownloadLink || '');
-      setClientUploadLink(workToEdit.clientUploadLink || '');
+      setDriveFolderUrl(getProjectDriveFolderUrl(workToEdit));
+      setDriveUrlError(null);
     } else {
       const initialClientId = defaultClientId || (clients[0]?.id ?? '');
       setName('');
@@ -99,11 +104,10 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
       setEditorRate(settings.defaultEditorRate || 900);
       setStatus('Pending');
       setDueDate('');
+      setPriority('Medium');
       setNotes('');
-      setUserDownloadLink('');
-      setUserUploadLink('');
-      setClientDownloadLink('');
-      setClientUploadLink('');
+      setDriveFolderUrl('');
+      setDriveUrlError(null);
     }
   }, [workToEdit, isOpen, defaultClientId, clients, settings]);
 
@@ -117,22 +121,43 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
     e.preventDefault();
     if (!name.trim() || !clientId) return;
 
+    const trimmedDriveUrl = driveFolderUrl.trim();
+    if (trimmedDriveUrl && !isValidGoogleDriveFolderUrl(trimmedDriveUrl)) {
+      setDriveUrlError(DRIVE_FOLDER_VALIDATION_ERROR);
+      return;
+    }
+
+    const finalWorkDoneBy = (workDoneBy === 'Assigned' || Boolean(assignedTo)) && assignedTo ? 'Assigned' : workDoneBy;
+    const resolvedAssignedTo = finalWorkDoneBy === 'Assigned' ? (assignedTo || null) : null;
+    const resolvedEditorRate = finalWorkDoneBy === 'Assigned' ? Number(editorRate) || 0 : 0;
+    const cleanDueDate = dueDate ? dueDate.trim() : '';
+
     const projectPayload = {
       name: name.trim(),
       clientId,
       workType,
       quantity: Number(quantity) || 1,
       clientRate: Number(clientRate) || 0,
-      workDoneBy,
-      assignedTo: workDoneBy === 'Assigned' ? assignedTo : undefined,
-      editorRate: workDoneBy === 'Assigned' ? Number(editorRate) || 0 : 0,
+      totalBilling: (Number(quantity) || 1) * (Number(clientRate) || 0),
+      workDoneBy: finalWorkDoneBy,
+      assignedTo: resolvedAssignedTo,
+      editorId: resolvedAssignedTo || null,
+      assignedEditorId: resolvedAssignedTo || null,
+      editorRate: resolvedEditorRate,
       status,
-      dueDate: dueDate || undefined,
+      dueDate: cleanDueDate,
+      priority,
+      completedAt:
+        status === 'Completed' || status === 'Approved' || status === 'Delivered'
+          ? workToEdit?.completedAt || new Date().toISOString()
+          : undefined,
       notes: notes.trim(),
-      userDownloadLink: userDownloadLink.trim(),
-      userUploadLink: userUploadLink.trim(),
-      clientDownloadLink: clientDownloadLink.trim(),
-      clientUploadLink: clientUploadLink.trim(),
+      driveFolderUrl: trimmedDriveUrl,
+      // For existing projects: safely preserve existing legacy link fields without overwriting
+      userDownloadLink: workToEdit?.userDownloadLink || '',
+      userUploadLink: workToEdit?.userUploadLink || '',
+      clientDownloadLink: workToEdit?.clientDownloadLink || '',
+      clientUploadLink: workToEdit?.clientUploadLink || '',
     };
 
     if (workToEdit) {
@@ -205,8 +230,8 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
             </div>
           </div>
 
-          {/* Type, Quantity, Status, Due Date */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* Type, Quantity, Status, Priority, Due Date */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Work Type</label>
               <select
@@ -252,6 +277,20 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
             </div>
 
             <div>
+              <label className="block font-semibold text-slate-700 mb-1">Priority</label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as ProjectPriority)}
+                className="w-full px-2.5 py-2 bg-slate-50 border border-slate-300 rounded-lg"
+              >
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+                <option value="Urgent">Urgent 🔥</option>
+              </select>
+            </div>
+
+            <div className="col-span-2 sm:col-span-1">
               <label className="block font-semibold text-slate-700 mb-1">Due Date</label>
               <input
                 type="date"
@@ -336,7 +375,7 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
                     <option value="">Select Editor</option>
                     {editors.map((ed) => (
                       <option key={ed.id} value={ed.id}>
-                        {ed.name} (Default: ₹{ed.editorRate}/vid)
+                        {ed.name} • [{ed.availability || 'Available'}] (Rate: ₹{ed.editorRate}/vid)
                       </option>
                     ))}
                   </select>
@@ -361,68 +400,47 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
             )}
           </div>
 
-          {/* The Four-Link System */}
+          {/* Project Drive Folder */}
           <div className="border border-slate-200 p-4 rounded-xl space-y-3 bg-white">
-            <div className="flex items-center space-x-2">
-              <LinkIcon className="w-4 h-4 text-indigo-600" />
-              <h4 className="font-bold text-slate-900">The Four-Link Cloud Workflow</h4>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Folder className="w-4 h-4 text-indigo-600" />
+                <h4 className="font-bold text-slate-900 text-sm">Project Drive Folder</h4>
+              </div>
+              <span className="text-[10px] text-indigo-700 font-semibold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                Single Shared Folder
+              </span>
             </div>
-            <p className="text-slate-500 text-[11px]">
-              Set the Google Drive, Dropbox, Frame.io, or Mega storage links for client and editor portals.
+            <p className="text-slate-500 text-[11px] leading-relaxed">
+              Canonical Google Drive folder for this project. Client raw assets, references, editor cuts, revisions, and final deliverables are all organized within this single folder.
             </p>
 
-            <div className="space-y-3 pt-1">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  1. User Download Link (Client's Raw Footage Folder)
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://drive.google.com/drive/folders/raw-footage..."
-                  value={userDownloadLink}
-                  onChange={(e) => setUserDownloadLink(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  2. User Upload Link (Client's Final Deliverables Folder)
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://drive.google.com/drive/folders/final-renders..."
-                  value={userUploadLink}
-                  onChange={(e) => setUserUploadLink(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  3. Client Download Link (Editor's Raw Materials Folder)
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://drive.google.com/drive/folders/editor-raw-assets..."
-                  value={clientDownloadLink}
-                  onChange={(e) => setClientDownloadLink(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  4. Client Upload Link (Editor's Render Upload Submission Folder)
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://drive.google.com/drive/folders/editor-render-drop..."
-                  value={clientUploadLink}
-                  onChange={(e) => setClientUploadLink(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg"
-                />
-              </div>
+            <div>
+              <label className="block font-semibold text-slate-700 text-xs mb-1">
+                Google Drive Folder URL
+              </label>
+              <input
+                id="input-project-drive-folder"
+                type="url"
+                placeholder="https://drive.google.com/drive/folders/..."
+                value={driveFolderUrl}
+                onChange={(e) => {
+                  setDriveFolderUrl(e.target.value);
+                  if (driveUrlError) setDriveUrlError(null);
+                }}
+                className={`w-full px-3 py-2 bg-slate-50 border rounded-lg font-mono text-xs text-slate-900 focus:bg-white transition ${
+                  driveUrlError ? 'border-rose-400 bg-rose-50/40 text-rose-900' : 'border-slate-300'
+                }`}
+              />
+              {driveUrlError ? (
+                <p className="text-rose-600 text-xs mt-1.5 font-medium flex items-center gap-1">
+                  {driveUrlError}
+                </p>
+              ) : (
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Suggested internal structure: Client Raw Files • References • Edited Videos • Revisions • Final Deliverables
+                </p>
+              )}
             </div>
           </div>
 
