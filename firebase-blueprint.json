@@ -244,6 +244,46 @@
         "createdBy": { "type": "string", "maxLength": 128 }
       },
       "required": ["id", "title", "date", "status"]
+    },
+    "BackupHistory": {
+      "title": "BackupHistory",
+      "description": "Audit record and metadata of CRM database backups and snapshots",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "string", "maxLength": 100 },
+        "date": { "type": "string", "maxLength": 100 },
+        "time": { "type": "string", "maxLength": 50 },
+        "type": { "type": "string", "maxLength": 100 },
+        "fileName": { "type": "string", "maxLength": 300 },
+        "jsonFileName": { "type": "string", "maxLength": 300 },
+        "pdfFileName": { "type": "string", "maxLength": 300 },
+        "jsonStoragePath": { "type": "string", "maxLength": 300 },
+        "pdfStoragePath": { "type": "string", "maxLength": 300 },
+        "fileSizeBytes": { "type": "number" },
+        "fileSizeFormatted": { "type": "string", "maxLength": 50 },
+        "jsonSize": { "type": "number" },
+        "pdfSize": { "type": "number" },
+        "status": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "timestamp", "type", "fileName"]
+    },
+    "BackupArtifact": {
+      "title": "BackupArtifact",
+      "description": "Historical backup artifact content containing raw database JSON snapshot and PDF data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "backupId": { "type": "string", "maxLength": 128 },
+        "jsonFileName": { "type": "string", "maxLength": 300 },
+        "pdfFileName": { "type": "string", "maxLength": 300 },
+        "jsonSize": { "type": "number" },
+        "pdfSize": { "type": "number" },
+        "status": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "backupId"]
     }
   },
   "firestore": {
@@ -294,6 +334,14 @@
     "/calendarTasks/{taskId}": {
       "schema": { "$ref": "#/entities/CalendarTask" },
       "description": "Collection of admin tasks, to-dos, and reminders for the calendar"
+    },
+    "/backupHistory/{backupId}": {
+      "schema": { "$ref": "#/entities/BackupHistory" },
+      "description": "Collection of CRM backup history audit records"
+    },
+    "/backupArtifacts/{artifactId}": {
+      "schema": { "$ref": "#/entities/BackupArtifact" },
+      "description": "Collection of persistent historical backup artifacts and snapshots"
     }
   }
 }

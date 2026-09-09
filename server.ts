@@ -26,6 +26,86 @@ function getGeminiClient(): GoogleGenAI {
   return aiClient;
 }
 
+// Helper to detect transient 503 / high demand / rate limit errors
+function isTransientGeminiError(err: any): boolean {
+  if (!err) return false;
+  const status = err?.status || err?.code || (err?.response && err?.response?.status);
+  if (status === 503 || status === 'UNAVAILABLE' || status === 429) return true;
+
+  const msg = typeof err?.message === 'string' ? err.message : JSON.stringify(err);
+  return (
+    msg.includes('503') ||
+    msg.includes('UNAVAILABLE') ||
+    msg.includes('high demand') ||
+    msg.includes('temporarily') ||
+    msg.includes('overloaded') ||
+    msg.includes('RESOURCE_EXHAUSTED') ||
+    msg.includes('Resource has been exhausted') ||
+    msg.includes('Rate limit')
+  );
+}
+
+const SUPPORTED_SERVER_MODELS = ['gemini-3.8-flash', 'gemini-flash-latest'] as const;
+
+function validateServerModel(model?: string): string {
+  if (model && (SUPPORTED_SERVER_MODELS as readonly string[]).includes(model)) {
+    return model;
+  }
+  return 'gemini-3.8-flash';
+}
+
+async function callGeminiWithBackoff(
+  ai: GoogleGenAI,
+  formattedContents: any[],
+  systemInstruction: string,
+  requestedModel?: string
+): Promise<string> {
+  // Use supported models from Google AI Studio Build Mode
+  // Primary: validated model (default 'gemini-3.8-flash')
+  // Fallback: 'gemini-flash-latest' (supported alias in SKILL.md)
+  const primaryModel = validateServerModel(requestedModel);
+  const modelsToTry = [primaryModel, primaryModel, 'gemini-flash-latest'];
+  let lastError: any = null;
+
+  for (let attempt = 0; attempt < modelsToTry.length; attempt++) {
+    const selectedModel = modelsToTry[attempt];
+    try {
+      const response = await ai.models.generateContent({
+        model: selectedModel,
+        contents: formattedContents,
+        config: {
+          systemInstruction,
+        },
+      });
+
+      const replyText = response.text;
+      if (replyText) {
+        return replyText;
+      }
+    } catch (err: any) {
+      lastError = err;
+      const isTransient = isTransientGeminiError(err);
+      console.warn(`[Gemini API] Attempt ${attempt + 1} (${selectedModel}) failed:`, err?.message || err);
+
+      if (isTransient && attempt < modelsToTry.length - 1) {
+        // Controlled exponential backoff: ~800ms, ~1600ms + random jitter
+        const baseDelay = 800 * Math.pow(2, attempt);
+        const jitter = Math.floor(Math.random() * 300);
+        const delay = baseDelay + jitter;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+
+      // If not transient, do not retry further
+      if (!isTransient) {
+        throw err;
+      }
+    }
+  }
+
+  throw lastError || new Error('Gemini is temporarily busy. Please try again in a moment.');
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -40,7 +120,7 @@ async function startServer() {
   // Gemini CRM Chatbot Endpoint
   app.post('/api/gemini/chat', async (req, res) => {
     try {
-      const { message, history, crmContext } = req.body;
+      const { message, history, crmContext, model } = req.body;
 
       if (!message || typeof message !== 'string') {
         return res.status(400).json({ error: 'A text message is required.' });
@@ -105,23 +185,25 @@ ${typeof crmContext === 'string' ? crmContext : JSON.stringify(crmContext, null,
         parts: [{ text: message }],
       });
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: formattedContents,
-        config: {
-          systemInstruction,
-        },
-      });
-
-      const replyText = response.text || 'No response generated.';
+      const replyText = await callGeminiWithBackoff(ai, formattedContents, systemInstruction, model);
       return res.json({ reply: replyText });
     } catch (error: any) {
       console.error('Error in /api/gemini/chat:', error);
       const isMissingKey = error?.message?.includes('GEMINI_API_KEY');
+      if (isMissingKey) {
+        return res.status(500).json({
+          error: 'Gemini service is not configured. Please check AI Studio Secrets.',
+        });
+      }
+
+      if (isTransientGeminiError(error)) {
+        return res.status(503).json({
+          error: 'Gemini is temporarily busy. Please try again in a moment.',
+        });
+      }
+
       return res.status(500).json({
-        error: isMissingKey
-          ? 'Gemini API key is not configured. Please ensure GEMINI_API_KEY is added in AI Studio Secrets.'
-          : error?.message || 'An error occurred while contacting Gemini AI.',
+        error: 'Gemini is temporarily busy. Please try again in a moment.',
       });
     }
   });

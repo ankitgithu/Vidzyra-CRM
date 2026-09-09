@@ -588,14 +588,15 @@ export function generateCrmSnapshotPdf(params: {
 // FULL DATABASE SNAPSHOT & EXPORT REPORT (PDF)
 // ==========================================
 
-export function getBackupTimestamp(): string {
-  const now = new Date();
+export function getBackupTimestamp(dateInput?: string | Date): string {
+  const d = dateInput ? new Date(dateInput) : new Date();
+  const validDate = isNaN(d.getTime()) ? new Date() : d;
   const pad = (n: number) => String(n).padStart(2, '0');
-  const year = now.getFullYear();
-  const month = pad(now.getMonth() + 1);
-  const day = pad(now.getDate());
-  const hours = pad(now.getHours());
-  const minutes = pad(now.getMinutes());
+  const year = validDate.getFullYear();
+  const month = pad(validDate.getMonth() + 1);
+  const day = pad(validDate.getDate());
+  const hours = pad(validDate.getHours());
+  const minutes = pad(validDate.getMinutes());
   return `${year}-${month}-${day}-${hours}-${minutes}`;
 }
 
@@ -730,12 +731,30 @@ function renderSectionTable(
   return y;
 }
 
+export interface GenerateSnapshotPdfOptions {
+  autoSave?: boolean;
+  customFileName?: string;
+  backupTimestamp?: string;
+  backupDateStr?: string;
+}
+
+export interface GeneratedSnapshotPdfResult {
+  doc: jsPDF;
+  blob: Blob;
+  base64: string;
+  filename: string;
+  size: number;
+}
+
 /**
- * Generates and downloads a complete, professional Vidzyra CRM Database Snapshot PDF report.
+ * Generates and optionally downloads a complete, professional Vidzyra CRM Database Snapshot PDF report.
  * This document is formatted strictly for viewing, printing, record keeping, and auditing.
  * It does NOT restore database data.
  */
-export function generateDatabaseSnapshotPdf(data: DatabaseSnapshotData): void {
+export function generateDatabaseSnapshotPdf(
+  data: DatabaseSnapshotData,
+  options?: GenerateSnapshotPdfOptions
+): GeneratedSnapshotPdfResult {
   const doc = new jsPDF({
     unit: 'pt',
     format: 'a4',
@@ -748,7 +767,7 @@ export function generateDatabaseSnapshotPdf(data: DatabaseSnapshotData): void {
 
   const currency = data.settings.currency || 'INR';
   const now = new Date();
-  const formattedExportDate = `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+  const formattedExportDate = options?.backupDateStr || `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
 
   // ==========================================
   // 1. COVER / MAIN HEADER BLOCK
@@ -1247,7 +1266,28 @@ export function generateDatabaseSnapshotPdf(data: DatabaseSnapshotData): void {
     doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
   }
 
-  // Save the PDF
-  const filename = `Vidzyra-CRM-Database-Snapshot-${getBackupTimestamp()}.pdf`;
-  doc.save(filename);
+  // Determine filename
+  const filename =
+    options?.customFileName ||
+    `Vidzyra-Database-Snapshot-${options?.backupTimestamp || getBackupTimestamp()}.pdf`;
+
+  if (options?.autoSave !== false) {
+    doc.save(filename);
+  }
+
+  const blob = doc.output('blob');
+  let base64 = '';
+  try {
+    base64 = doc.output('datauristring');
+  } catch {
+    // fallback if datauristring fails
+  }
+
+  return {
+    doc,
+    blob,
+    base64,
+    filename,
+    size: blob.size,
+  };
 }

@@ -122,6 +122,17 @@ service cloud.firestore {
       allow write: if isValidId(backupId);
     }
 
+    // Backup Historical Artifacts (JSON & PDF Snapshots)
+    match /backupArtifacts/{artifactId} {
+      allow get: if isValidId(artifactId);
+      allow list: if true;
+      allow write: if isValidId(artifactId);
+    }
+
+    match /backupArtifacts/{artifactId}/{allPaths=**} {
+      allow read, write: if isValidId(artifactId);
+    }
+
     // Calendar Tasks
     match /calendarTasks/{taskId} {
       allow get: if isValidId(taskId);

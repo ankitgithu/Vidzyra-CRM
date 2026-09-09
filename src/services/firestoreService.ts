@@ -1114,8 +1114,11 @@ export async function restoreDatabaseToFirestore(backupData: {
   calendarTasks?: CalendarTask[];
   settings?: BusinessSettings;
 }): Promise<void> {
-  // 1. Collect all existing document IDs from all collections to delete them
-  const collectionNames = Object.values(COLLECTIONS);
+  // 1. Collect all existing document IDs from CRM data collections to delete them
+  // CRITICAL: Exclude backupHistory and backupArtifacts so historical safety backups are NEVER wiped on restore
+  const collectionNames = Object.values(COLLECTIONS).filter(
+    (col) => col !== COLLECTIONS.BACKUP_HISTORY && (col as string) !== 'backupArtifacts'
+  );
   const deleteDocRefs: Array<{ col: string; id: string }> = [];
 
   for (const colName of collectionNames) {

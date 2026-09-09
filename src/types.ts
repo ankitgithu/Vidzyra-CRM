@@ -453,9 +453,20 @@ export interface BackupHistoryRecord {
   date: string;
   time: string;
   type: 'Full JSON Backup' | 'Pre-Restore Safety Backup' | 'System Snapshot' | 'PDF Snapshot' | string;
+  backupType?: string;
   fileName: string;
+  jsonFileName?: string;
+  pdfFileName?: string;
+  jsonStoragePath?: string;
+  pdfStoragePath?: string;
   fileSizeBytes?: number;
   fileSizeFormatted?: string;
+  jsonSize?: number;
+  jsonSizeFormatted?: string;
+  pdfSize?: number;
+  pdfSizeFormatted?: string;
+  status?: 'Ready' | 'Available' | 'Failed';
+  createdBy?: string;
   counts: {
     clients: number;
     editors: number;
@@ -463,6 +474,7 @@ export interface BackupHistoryRecord {
     payments: number;
     expenses: number;
     invoices: number;
+    receipts?: number;
     revisions?: number;
     notifications?: number;
     activities?: number;
