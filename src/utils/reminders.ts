@@ -27,7 +27,7 @@ export async function processDueReminders(
       continue;
     }
 
-    if (!project.dueDate) continue;
+    if (!project.deadline && !project.dueDate) continue;
 
     const info = getDeadlineInfo(project);
     if (info.state !== 'Due Today' && info.state !== 'Overdue' && info.state !== 'Upcoming') {
@@ -68,7 +68,8 @@ export async function processDueReminders(
       actionRequired = `Action required: Finalize work within ${info.diffDays} day${info.diffDays > 1 ? 's' : ''}.`;
     }
 
-    const message = `[${info.state.toUpperCase()}] Project "${project.name}" (ID: ${project.id}) for ${clientName}. Deadline: ${project.dueDate} (${info.text}). ${actionRequired}`;
+    const effectiveDeadline = project.deadline || project.dueDate;
+    const message = `[${info.state.toUpperCase()}] Project "${project.name}" (ID: ${project.id}) for ${clientName}. Deadline: ${effectiveDeadline} (${info.text}). ${actionRequired}`;
 
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -99,7 +100,7 @@ export async function processDueReminders(
         const editorNotif: NotificationItem = {
           id: `notif-remind-editor-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           type: 'deadline',
-          message: `[${info.state.toUpperCase()}] Assigned Project "${project.name}" is ${info.text}. Deadline: ${project.dueDate}. ${actionRequired}`,
+          message: `[${info.state.toUpperCase()}] Assigned Project "${project.name}" is ${info.text}. Deadline: ${effectiveDeadline}. ${actionRequired}`,
           recipientRole: 'editor',
           recipientId: project.assignedTo,
           targetRole: 'editor',

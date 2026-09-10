@@ -205,6 +205,12 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                         {' • '}
                         Editor: <span className="font-medium text-slate-700">{getEditorName(proj)}</span>
                       </p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 mt-2">
+                        {proj.workGivenDate && (
+                          <span>Given: <strong className="text-slate-700">{proj.workGivenDate}</strong></span>
+                        )}
+                        <span>Deadline: <strong className="text-rose-700">{proj.deadline || proj.dueDate || 'N/A'}</strong></span>
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 text-xs">
@@ -268,6 +274,12 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                       {' • '}
                       Editor: <span className="font-medium text-slate-700">{getEditorName(proj)}</span>
                     </p>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 mt-2">
+                      {proj.workGivenDate && (
+                        <span>Work Given Date: <strong className="text-slate-700">{proj.workGivenDate}</strong></span>
+                      )}
+                      <span>Deadline: <strong className="text-amber-800">{proj.deadline || proj.dueDate || 'N/A'}</strong></span>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between mt-3 pt-3 border-t border-amber-100 text-xs">
@@ -324,6 +336,12 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
                       <p className="text-xs text-slate-500 mt-0.5">
                         Client: {getClientName(proj)} • Editor: {getEditorName(proj)}
                       </p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 mt-1">
+                        {proj.workGivenDate && (
+                          <span>Given: <strong className="text-slate-700">{proj.workGivenDate}</strong></span>
+                        )}
+                        <span>Deadline: <strong className="text-purple-800">{proj.deadline || proj.dueDate || 'N/A'}</strong></span>
+                      </div>
                     </div>
                     <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-purple-600 text-white whitespace-nowrap">
                       {proj.revisionStatus || 'In Revision'}

@@ -30,7 +30,9 @@ export function getDeadlineInfo(project: WorkProject): DeadlineInfo {
     project.status === 'Approved' ||
     project.status === 'Delivered';
 
-  if (!project.dueDate || project.dueDate.trim() === '') {
+  const effectiveDeadline = (project.deadline || project.dueDate || '').trim();
+
+  if (!effectiveDeadline) {
     return {
       state: isCompleted ? 'Completed' : 'No Deadline',
       text: isCompleted ? 'Completed' : 'No Deadline',
@@ -46,8 +48,8 @@ export function getDeadlineInfo(project: WorkProject): DeadlineInfo {
     };
   }
 
-  // Parse dueDate (supports YYYY-MM-DD or ISO string)
-  const dueParts = project.dueDate.split('T')[0].split('-');
+  // Parse deadline (supports YYYY-MM-DD or ISO string)
+  const dueParts = effectiveDeadline.split('T')[0].split('-');
   if (dueParts.length < 3) {
     return {
       state: isCompleted ? 'Completed' : 'No Deadline',

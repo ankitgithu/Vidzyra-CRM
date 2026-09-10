@@ -53,15 +53,16 @@ export const DeadlineCalendarView: React.FC<DeadlineCalendarViewProps> = ({
     setCurrentDate(new Date());
   };
 
-  // Group projects by dueDate (YYYY-MM-DD)
+  // Group projects by deadline (YYYY-MM-DD)
   const projectsByDueDate = useMemo(() => {
     const map: Record<string, WorkProject[]> = {};
 
     projects.forEach((p) => {
-      if (!p.dueDate) return;
+      const deadlineDate = p.deadline || p.dueDate;
+      if (!deadlineDate) return;
       if (filterPriority !== 'all' && (p.priority || 'Medium') !== filterPriority) return;
 
-      const dateKey = p.dueDate.trim();
+      const dateKey = deadlineDate.trim();
       if (!map[dateKey]) map[dateKey] = [];
       map[dateKey].push(p);
     });
@@ -78,8 +79,9 @@ export const DeadlineCalendarView: React.FC<DeadlineCalendarViewProps> = ({
     const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`;
 
     projects.forEach((p) => {
-      if (!p.dueDate) return;
-      if (p.dueDate.startsWith(monthStr)) {
+      const deadlineDate = p.deadline || p.dueDate;
+      if (!deadlineDate) return;
+      if (deadlineDate.startsWith(monthStr)) {
         dueThisMonth++;
         const dl = getDeadlineInfo(p);
         if (dl.isOverdue) overdueCount++;

@@ -76,15 +76,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
   tomorrowObj.setDate(tomorrowObj.getDate() + 1);
   const tomorrowStr = tomorrowObj.toISOString().split('T')[0];
 
-  const dueTodayWork = projects.filter((p) => p.dueDate === todayStr && p.status !== 'Completed' && p.status !== 'Delivered');
-  const dueTomorrowWork = projects.filter((p) => p.dueDate === tomorrowStr && p.status !== 'Completed' && p.status !== 'Delivered');
+  const dueTodayWork = projects.filter((p) => (p.deadline || p.dueDate) === todayStr && p.status !== 'Completed' && p.status !== 'Delivered');
+  const dueTomorrowWork = projects.filter((p) => (p.deadline || p.dueDate) === tomorrowStr && p.status !== 'Completed' && p.status !== 'Delivered');
   const overdueWork = projects.filter((p) => {
-    if (p.status === 'Completed' || p.status === 'Delivered' || !p.dueDate) return false;
-    return p.dueDate < todayStr;
+    const d = p.deadline || p.dueDate;
+    if (p.status === 'Completed' || p.status === 'Delivered' || !d) return false;
+    return d < todayStr;
   });
   const upcomingWork = projects.filter((p) => {
-    if (p.status === 'Completed' || p.status === 'Delivered' || !p.dueDate) return false;
-    return p.dueDate > tomorrowStr;
+    const d = p.deadline || p.dueDate;
+    if (p.status === 'Completed' || p.status === 'Delivered' || !d) return false;
+    return d > tomorrowStr;
   });
 
   // Calculate Editor Overview metrics
@@ -265,7 +267,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   >
                     <span>{pw.name}</span>
                     <span className="text-[10px] text-rose-500 font-normal">
-                      (Due: {pw.dueDate})
+                      (Due: {pw.deadline || pw.dueDate})
                     </span>
                   </button>
                 ))}
@@ -619,7 +621,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       </span>
                     </div>
                     <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1.5">
-                      <span>Due: {w.dueDate}</span>
+                      <span>Deadline: {w.deadline || w.dueDate}</span>
                       <span className="text-slate-700 font-semibold">
                         ₹{(w.totalBilling ?? ((Number(w.quantity) || 1) * (Number(w.clientRate) || 0)) ?? 0).toLocaleString()}
                       </span>
@@ -669,7 +671,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       </span>
                     </div>
                     <div className="flex justify-between items-center text-[10px] text-rose-600 mt-1.5">
-                      <span>Passed: {w.dueDate}</span>
+                      <span>Passed: {w.deadline || w.dueDate}</span>
                       <span className="font-bold">Urgent</span>
                     </div>
                   </div>

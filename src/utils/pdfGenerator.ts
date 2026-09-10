@@ -551,7 +551,7 @@ export function generateCrmSnapshotPdf(params: {
     doc.text(proj.name.substring(0, 28), margin + 8, y + 12);
     doc.text(clientName.substring(0, 20), margin + 180, y + 12);
     doc.text(proj.status, margin + 300, y + 12);
-    doc.text(proj.dueDate || 'No date', margin + 400, y + 12);
+    doc.text(proj.deadline || proj.dueDate || 'No date', margin + 400, y + 12);
     doc.text(`${currency} ${proj.totalBilling.toLocaleString()}`, margin + tableWidth - 8, y + 12, { align: 'right' });
 
     y += 16;
@@ -954,7 +954,7 @@ export function generateDatabaseSnapshotPdf(
         },
       },
       { header: 'STATUS', width: 13, accessor: (p) => p.status },
-      { header: 'DUE DATE', width: 11, accessor: (p) => p.dueDate || '—' },
+      { header: 'DEADLINE', width: 11, accessor: (p) => p.deadline || p.dueDate || '—' },
       { header: 'DRIVE FOLDER', width: 11, accessor: (p) => p.driveFolderLink || '—' },
       {
         header: 'BILLING',

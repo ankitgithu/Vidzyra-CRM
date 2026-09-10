@@ -426,8 +426,11 @@ export const EditorPortalView: React.FC<EditorPortalViewProps> = ({
                         </span>
                       </div>
 
-                      <div className="flex items-center space-x-3 text-xs text-slate-500">
-                        <span>Due Date: <strong>{p.dueDate || 'Urgent'}</strong></span>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                        {p.workGivenDate && (
+                          <span>Given: <strong>{p.workGivenDate}</strong></span>
+                        )}
+                        <span>Deadline: <strong>{p.deadline || p.dueDate || 'Urgent'}</strong></span>
                         <span>•</span>
                         <span>Qty: <strong>{p.quantity}</strong></span>
                         <span>•</span>

@@ -63,6 +63,8 @@ export interface CrmContextSnapshot {
     totalBilling: number;
     editorRate: number;
     dueDate: string;
+    deadline: string;
+    workGivenDate: string;
     priority: string;
     revisionCount: number;
     revisionStatus: string;
@@ -123,31 +125,35 @@ export function buildCrmContextSnapshot(crm: CrmContextType): CrmContextSnapshot
 
   // Deadlines
   const overdue = projects
-    .filter(
-      (p) =>
+    .filter((p) => {
+      const d = p.deadline || p.dueDate;
+      return (
         p.status !== 'Completed' &&
         p.status !== 'Delivered' &&
         p.status !== 'Approved' &&
-        p.dueDate &&
-        p.dueDate < todayStr
-    )
+        d &&
+        d < todayStr
+      );
+    })
     .map((p) => {
       const c = clients.find((cl) => cl.id === p.clientId);
       return {
         name: p.name,
         client: c ? c.name : 'Unknown Client',
-        dueDate: p.dueDate,
+        dueDate: p.deadline || p.dueDate,
       };
     });
 
   const dueToday = projects
-    .filter(
-      (p) =>
+    .filter((p) => {
+      const d = p.deadline || p.dueDate;
+      return (
         p.status !== 'Completed' &&
         p.status !== 'Delivered' &&
         p.status !== 'Approved' &&
-        p.dueDate === todayStr
-    )
+        d === todayStr
+      );
+    })
     .map((p) => {
       const c = clients.find((cl) => cl.id === p.clientId);
       return {
@@ -157,13 +163,15 @@ export function buildCrmContextSnapshot(crm: CrmContextType): CrmContextSnapshot
     });
 
   const dueTomorrow = projects
-    .filter(
-      (p) =>
+    .filter((p) => {
+      const d = p.deadline || p.dueDate;
+      return (
         p.status !== 'Completed' &&
         p.status !== 'Delivered' &&
         p.status !== 'Approved' &&
-        p.dueDate === tomorrowStr
-    )
+        d === tomorrowStr
+      );
+    })
     .map((p) => {
       const c = clients.find((cl) => cl.id === p.clientId);
       return {
@@ -173,21 +181,23 @@ export function buildCrmContextSnapshot(crm: CrmContextType): CrmContextSnapshot
     });
 
   const upcoming = projects
-    .filter(
-      (p) =>
+    .filter((p) => {
+      const d = p.deadline || p.dueDate;
+      return (
         p.status !== 'Completed' &&
         p.status !== 'Delivered' &&
         p.status !== 'Approved' &&
-        p.dueDate &&
-        p.dueDate > tomorrowStr
-    )
+        d &&
+        d > tomorrowStr
+      );
+    })
     .slice(0, 10)
     .map((p) => {
       const c = clients.find((cl) => cl.id === p.clientId);
       return {
         name: p.name,
         client: c ? c.name : 'Unknown Client',
-        dueDate: p.dueDate,
+        dueDate: p.deadline || p.dueDate,
       };
     });
 
@@ -247,7 +257,9 @@ export function buildCrmContextSnapshot(crm: CrmContextType): CrmContextSnapshot
       clientRate: Number(p.clientRate) || 0,
       totalBilling: Number(p.totalBilling) || 0,
       editorRate: Number(p.editorRate) || 0,
-      dueDate: p.dueDate || 'No date set',
+      dueDate: p.deadline || p.dueDate || 'No date set',
+      deadline: p.deadline || p.dueDate || 'No date set',
+      workGivenDate: p.workGivenDate || 'Not specified',
       priority: p.priority || 'Medium',
       revisionCount: Number(p.revisionCount) || 0,
       revisionStatus: p.revisionStatus || 'No Revision',

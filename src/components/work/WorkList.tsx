@@ -433,7 +433,7 @@ export const WorkList: React.FC<WorkListProps> = ({
                   <th className="px-3 py-3">Assigned / Done By</th>
                   <th className="px-3 py-3 text-right">Editor Rate</th>
                   <th className="px-3 py-3 text-center">Status</th>
-                  <th className="px-3 py-3 text-center">Due Date</th>
+                  <th className="px-3 py-3 text-center">Deadline</th>
                   <th className="px-3 py-3 text-center">Drive Folder</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
@@ -556,11 +556,14 @@ export const WorkList: React.FC<WorkListProps> = ({
                           </span>
                         </td>
 
-                        {/* Due Date & Deadline Status */}
+                        {/* Deadline & Work Given Date */}
                         <td className="px-3 py-3.5 text-center whitespace-nowrap text-slate-600 text-[11px]">
-                          {p.dueDate ? (
+                          {(p.deadline || p.dueDate) ? (
                             <div className="flex flex-col items-center gap-0.5">
-                              <span className="font-medium text-slate-700">{p.dueDate}</span>
+                              <span className="font-semibold text-slate-800">{p.deadline || p.dueDate}</span>
+                              {p.workGivenDate && (
+                                <span className="text-[9px] text-slate-400">Given: {p.workGivenDate}</span>
+                              )}
                               <span
                                 className={`px-1.5 py-0.2 rounded text-[9px] font-bold inline-flex items-center gap-0.5 ${deadline.badgeClass}`}
                               >
@@ -568,6 +571,11 @@ export const WorkList: React.FC<WorkListProps> = ({
                                 {deadline.isDueToday && <Clock className="w-2.5 h-2.5" />}
                                 {deadline.text}
                               </span>
+                            </div>
+                          ) : p.workGivenDate ? (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="text-[10px] text-slate-500">Given: {p.workGivenDate}</span>
+                              <span className="text-[9px] text-slate-400">No deadline</span>
                             </div>
                           ) : (
                             '—'

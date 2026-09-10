@@ -352,7 +352,8 @@ export const ClientPortalView: React.FC<ClientPortalViewProps> = ({
                     </div>
 
                     <p className="text-xs text-slate-500">
-                      Due Date: {p.dueDate || 'Standard turnaround'} • Quantity: {p.quantity}
+                      Deadline: {p.deadline || p.dueDate || 'Standard turnaround'}
+                      {p.workGivenDate ? ` • Given: ${p.workGivenDate}` : ''} • Quantity: {p.quantity}
                     </p>
 
                     {/* Client Review status banner */}

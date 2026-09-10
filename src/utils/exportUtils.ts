@@ -77,7 +77,7 @@ export function exportCrmDataCenter({
   notifications: NotificationItem[];
 }) {
   const filteredProjects = projects.filter((p) =>
-    isDateInRange(p.dueDate || p.createdAt, startDate, endDate)
+    isDateInRange(p.deadline || p.dueDate || p.createdAt, startDate, endDate)
   );
   const filteredClientPayments = clientPayments.filter((p) =>
     isDateInRange(p.date, startDate, endDate)
@@ -109,7 +109,8 @@ export function exportCrmDataCenter({
     'Editor Rate',
     'Editor Cost',
     'Status',
-    'Due Date',
+    'Work Given Date',
+    'Deadline',
     'Drive Folder URL',
     'User Download Link',
     'User Upload Link',
@@ -132,7 +133,8 @@ export function exportCrmDataCenter({
     p.editorRate,
     p.assignedTo ? p.quantity * p.editorRate : 0,
     p.status,
-    p.dueDate,
+    p.workGivenDate || '',
+    p.deadline || p.dueDate || '',
     getProjectDriveFolderUrl(p) || 'Not configured',
     p.userDownloadLink || 'Not configured',
     p.userUploadLink || 'Not configured',

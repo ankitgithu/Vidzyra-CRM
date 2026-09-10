@@ -255,7 +255,8 @@ export const EditorDetailModal: React.FC<EditorDetailModalProps> = ({
                           <span className="font-semibold text-purple-700">
                             Cost: ₹{(p.quantity * p.editorRate).toLocaleString()}
                           </span>
-                          <span>Due: {p.dueDate || 'None'}</span>
+                          {p.workGivenDate && <span>Given: {p.workGivenDate}</span>}
+                          <span>Deadline: {p.deadline || p.dueDate || 'None'}</span>
                         </div>
                       </div>
 

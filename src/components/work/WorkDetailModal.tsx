@@ -209,17 +209,29 @@ export const WorkDetailModal: React.FC<WorkDetailModalProps> = ({
               </select>
             </div>
 
-            <div className="flex items-center space-x-4 text-slate-600">
+            <div className="flex flex-wrap items-center gap-3 text-slate-600">
               <div className="flex items-center space-x-1.5">
                 <Calendar className="w-4 h-4 text-slate-400" />
-                <span className="font-semibold text-slate-600">Due Date:</span>
+                <span className="font-semibold text-slate-600">Work Given:</span>
                 <input
                   type="date"
-                  value={project.dueDate || ''}
-                  onChange={(e) => updateProject(project.id, { dueDate: e.target.value })}
+                  value={project.workGivenDate || ''}
+                  onChange={(e) => updateProject(project.id, { workGivenDate: e.target.value })}
                   className="font-bold text-xs px-2 py-0.5 rounded border border-slate-300 bg-white text-slate-800 focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
+
+              <div className="flex items-center space-x-1.5">
+                <Clock className="w-4 h-4 text-slate-400" />
+                <span className="font-semibold text-slate-600">Deadline:</span>
+                <input
+                  type="date"
+                  value={project.deadline || project.dueDate || ''}
+                  onChange={(e) => updateProject(project.id, { deadline: e.target.value, dueDate: e.target.value })}
+                  className="font-bold text-xs px-2 py-0.5 rounded border border-slate-300 bg-white text-slate-800 focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+
               <div>
                 <span>Quantity: <strong>{project.quantity}</strong></span>
               </div>

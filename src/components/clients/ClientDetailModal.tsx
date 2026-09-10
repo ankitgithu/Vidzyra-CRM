@@ -290,7 +290,8 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                           <span>Qty: {p.quantity}</span>
                           <span>Rate: ₹{p.clientRate}</span>
                           <span className="font-semibold text-slate-800">Total: ₹{p.totalBilling.toLocaleString()}</span>
-                          <span>Due: {p.dueDate || 'None'}</span>
+                          {p.workGivenDate && <span>Given: {p.workGivenDate}</span>}
+                          <span>Deadline: {p.deadline || p.dueDate || 'None'}</span>
                         </div>
                       </div>
 

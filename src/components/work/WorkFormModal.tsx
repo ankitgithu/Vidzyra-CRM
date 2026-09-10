@@ -32,7 +32,8 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
   const [assignedTo, setAssignedTo] = useState<string>('');
   const [editorRate, setEditorRate] = useState<number>(settings.defaultEditorRate || 900);
   const [status, setStatus] = useState<ProjectStatus>('Pending');
-  const [dueDate, setDueDate] = useState<string>('');
+  const [workGivenDate, setWorkGivenDate] = useState<string>('');
+  const [deadline, setDeadline] = useState<string>('');
   const [priority, setPriority] = useState<ProjectPriority>('Medium');
   const [notes, setNotes] = useState('');
 
@@ -86,7 +87,8 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
       setAssignedTo(resolvedEditorId);
       setEditorRate(workToEdit.editorRate || settings.defaultEditorRate || 900);
       setStatus(workToEdit.status);
-      setDueDate(workToEdit.dueDate || '');
+      setWorkGivenDate(workToEdit.workGivenDate || '');
+      setDeadline(workToEdit.deadline || workToEdit.dueDate || '');
       setPriority(workToEdit.priority || 'Medium');
       setNotes(workToEdit.notes || '');
       setDriveFolderUrl(getProjectDriveFolderUrl(workToEdit));
@@ -103,7 +105,8 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
       setAssignedTo('');
       setEditorRate(settings.defaultEditorRate || 900);
       setStatus('Pending');
-      setDueDate('');
+      setWorkGivenDate(new Date().toISOString().split('T')[0]);
+      setDeadline('');
       setPriority('Medium');
       setNotes('');
       setDriveFolderUrl('');
@@ -130,7 +133,8 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
     const finalWorkDoneBy = (workDoneBy === 'Assigned' || Boolean(assignedTo)) && assignedTo ? 'Assigned' : workDoneBy;
     const resolvedAssignedTo = finalWorkDoneBy === 'Assigned' ? (assignedTo || null) : null;
     const resolvedEditorRate = finalWorkDoneBy === 'Assigned' ? Number(editorRate) || 0 : 0;
-    const cleanDueDate = dueDate ? dueDate.trim() : '';
+    const cleanDeadline = deadline ? deadline.trim() : '';
+    const cleanWorkGivenDate = workGivenDate ? workGivenDate.trim() : '';
 
     const projectPayload = {
       name: name.trim(),
@@ -145,7 +149,9 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
       assignedEditorId: resolvedAssignedTo || null,
       editorRate: resolvedEditorRate,
       status,
-      dueDate: cleanDueDate,
+      workGivenDate: cleanWorkGivenDate,
+      deadline: cleanDeadline,
+      dueDate: cleanDeadline, // Kept in sync for backwards compatibility across existing system
       priority,
       completedAt:
         status === 'Completed' || status === 'Approved' || status === 'Delivered'
@@ -230,8 +236,8 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
             </div>
           </div>
 
-          {/* Type, Quantity, Status, Priority, Due Date */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {/* Type, Quantity, Status, Priority */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Work Type</label>
               <select
@@ -289,14 +295,33 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
                 <option value="Urgent">Urgent 🔥</option>
               </select>
             </div>
+          </div>
 
-            <div className="col-span-2 sm:col-span-1">
-              <label className="block font-semibold text-slate-700 mb-1">Due Date</label>
+          {/* Work Given Date & Deadline */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label id="label-work-given-date" className="block font-semibold text-slate-700 mb-1">
+                Work Given Date
+              </label>
               <input
+                id="work-given-date-input"
                 type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-2.5 py-2 bg-slate-50 border border-slate-300 rounded-lg"
+                value={workGivenDate}
+                onChange={(e) => setWorkGivenDate(e.target.value)}
+                className="w-full px-2.5 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label id="label-work-deadline" className="block font-semibold text-slate-700 mb-1">
+                Deadline
+              </label>
+              <input
+                id="work-deadline-input"
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+                className="w-full px-2.5 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
               />
             </div>
           </div>

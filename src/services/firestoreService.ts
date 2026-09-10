@@ -222,7 +222,9 @@ export function subscribeProjects(
           totalBilling,
           timeline,
           createdAt: safeDateString(raw.createdAt) || new Date().toISOString(),
-          dueDate: safeDateString(raw.dueDate) || raw.dueDate || '',
+          dueDate: safeDateString(raw.deadline) || safeDateString(raw.dueDate) || raw.deadline || raw.dueDate || '',
+          deadline: safeDateString(raw.deadline) || safeDateString(raw.dueDate) || raw.deadline || raw.dueDate || '',
+          workGivenDate: safeDateString(raw.workGivenDate) || raw.workGivenDate || '',
         });
       });
       items.sort((a, b) => safeSortDesc(a.createdAt, b.createdAt));
@@ -588,7 +590,9 @@ export async function createProjectDoc(project: WorkProject): Promise<void> {
       clientDownloadLink: project.clientDownloadLink || '',
       clientUploadLink: project.clientUploadLink || '',
       driveFolderUrl: project.driveFolderUrl || '',
-      dueDate: project.dueDate || '',
+      dueDate: project.deadline || project.dueDate || '',
+      deadline: project.deadline || project.dueDate || '',
+      workGivenDate: project.workGivenDate || '',
       notes: project.notes || '',
     });
     await setDoc(docRef, payload, { merge: true });
@@ -612,6 +616,11 @@ export async function updateProjectDoc(id: string, updates: Partial<WorkProject>
         : undefined;
 
     const payloadUpdates: any = { ...updates, updatedAt: new Date().toISOString() };
+    if (updates.deadline !== undefined && updates.dueDate === undefined) {
+      payloadUpdates.dueDate = updates.deadline;
+    } else if (updates.dueDate !== undefined && updates.deadline === undefined) {
+      payloadUpdates.deadline = updates.dueDate;
+    }
     if (resolvedEditor !== undefined) {
       payloadUpdates.assignedTo = resolvedEditor;
       payloadUpdates.editorId = resolvedEditor || null;

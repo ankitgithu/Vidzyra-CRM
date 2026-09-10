@@ -96,7 +96,7 @@ export const Reports: React.FC = () => {
   // Filtered dataset according to dates
   const filteredProjects = useMemo(() => {
     return projects.filter((p) => {
-      const pDate = p.dueDate || p.createdAt?.split('T')[0] || '';
+      const pDate = p.deadline || p.dueDate || p.createdAt?.split('T')[0] || '';
       if (!isDateInRange(pDate, startDate, endDate)) return false;
       if (clientFilter !== 'all' && p.clientId !== clientFilter) return false;
       if (editorFilter !== 'all') {
@@ -268,13 +268,13 @@ export const Reports: React.FC = () => {
       const rows = editorReportRows.map((r) => [r.name, r.email, r.totalAssigned, r.completedCount, r.pendingCount, r.totalEarnings, r.paidAmount, r.remainingBalance]);
       downloadCsv(`Vidzyra-Editor-Report-${todayStr}.csv`, [headers, ...rows]);
     } else if (activeReport === 'work') {
-      const headers = ['Work Name', 'Client', 'Work Type', 'Quantity', 'Client Rate', 'Total Billing', 'Assigned Editor', 'Editor Rate', 'Editor Cost', 'Profit', 'Status', 'Due Date'];
+      const headers = ['Work Name', 'Client', 'Work Type', 'Quantity', 'Client Rate', 'Total Billing', 'Assigned Editor', 'Editor Rate', 'Editor Cost', 'Profit', 'Status', 'Work Given Date', 'Deadline'];
       const rows = filteredProjects.map((p) => {
         const client = clients.find((c) => c.id === p.clientId)?.name || p.clientId;
         const editor = editors.find((e) => e.id === p.assignedTo)?.name || 'In-House';
         const cost = p.workDoneBy === 'Assigned' && p.assignedTo ? p.quantity * p.editorRate : 0;
         const profit = p.totalBilling - cost;
-        return [p.name, client, p.workType, p.quantity, p.clientRate, p.totalBilling, editor, p.editorRate, cost, profit, p.status, p.dueDate];
+        return [p.name, client, p.workType, p.quantity, p.clientRate, p.totalBilling, editor, p.editorRate, cost, profit, p.status, p.workGivenDate || '', p.deadline || p.dueDate || ''];
       });
       downloadCsv(`Vidzyra-Work-Report-${todayStr}.csv`, [headers, ...rows]);
     } else if (activeReport === 'payments') {
@@ -874,7 +874,7 @@ export const Reports: React.FC = () => {
                     <th className="px-3 py-3 text-right">Editor Cost</th>
                     <th className="px-3 py-3 text-right">Profit</th>
                     <th className="px-3 py-3 text-center">Status</th>
-                    <th className="px-3 py-3 text-center">Due Date</th>
+                    <th className="px-3 py-3 text-center">Deadline</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -926,7 +926,12 @@ export const Reports: React.FC = () => {
                               {p.status}
                             </span>
                           </td>
-                          <td className="px-3 py-3 text-center text-[11px] text-slate-600">{p.dueDate || '—'}</td>
+                          <td className="px-3 py-3 text-center text-[11px] text-slate-600">
+                            <div>{p.deadline || p.dueDate || '—'}</div>
+                            {p.workGivenDate && (
+                              <div className="text-[10px] text-slate-400">Given: {p.workGivenDate}</div>
+                            )}
+                          </td>
                         </tr>
                       );
                     })

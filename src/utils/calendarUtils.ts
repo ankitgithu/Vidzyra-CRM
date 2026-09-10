@@ -274,7 +274,7 @@ export function aggregateDayData(
       proj.status === 'Approved' ||
       proj.status === 'Delivered';
 
-    const projDueDateStr = normalizeDateStr(proj.dueDate);
+    const projDueDateStr = normalizeDateStr(proj.deadline || proj.dueDate);
     const completedDateStr = normalizeDateStr(proj.completedAt || proj.approvedAt);
 
     // Completed on this target date

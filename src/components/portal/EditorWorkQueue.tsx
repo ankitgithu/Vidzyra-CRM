@@ -78,15 +78,19 @@ export const EditorWorkQueue: React.FC<EditorWorkQueueProps> = ({
         const scoreA = getPriorityScore(a, deadA);
         const scoreB = getPriorityScore(b, deadB);
         if (scoreB !== scoreA) return scoreB - scoreA;
-        // Secondary: due date ascending
-        if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+        // Secondary: deadline ascending
+        const dateA = a.deadline || a.dueDate;
+        const dateB = b.deadline || b.dueDate;
+        if (dateA && dateB) return dateA.localeCompare(dateB);
         return 0;
       }
 
       if (sortOption === 'deadline') {
-        if (!a.dueDate) return 1;
-        if (!b.dueDate) return -1;
-        return a.dueDate.localeCompare(b.dueDate);
+        const dateA = a.deadline || a.dueDate;
+        const dateB = b.deadline || b.dueDate;
+        if (!dateA) return 1;
+        if (!dateB) return -1;
+        return dateA.localeCompare(dateB);
       }
 
       if (sortOption === 'newest') {
@@ -280,8 +284,11 @@ export const EditorWorkQueue: React.FC<EditorWorkQueueProps> = ({
                       <Clock className="w-3.5 h-3.5" />
                       <span>{deadline.text}</span>
                     </div>
-                    {project.dueDate && (
-                      <span className="text-[10px] text-slate-400 mt-1">Due: {project.dueDate}</span>
+                    {(project.deadline || project.dueDate) && (
+                      <span className="text-[10px] text-slate-400 mt-1">
+                        Deadline: {project.deadline || project.dueDate}
+                        {project.workGivenDate ? ` • Given: ${project.workGivenDate}` : ''}
+                      </span>
                     )}
                   </div>
 

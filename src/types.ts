@@ -102,7 +102,9 @@ export interface WorkProject {
   editorRate: number;
   editorCost?: number;
   profit?: number;
-  dueDate: string; // YYYY-MM-DD
+  dueDate: string; // YYYY-MM-DD (preserved for backwards compatibility)
+  deadline?: string; // YYYY-MM-DD (final deliverable completion deadline)
+  workGivenDate?: string; // YYYY-MM-DD (date project was assigned or given to editor/team)
   priority?: ProjectPriority; // 'Low' | 'Medium' | 'High' | 'Urgent'
   completedAt?: string;
   lastReminderState?: string;

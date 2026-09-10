@@ -1077,6 +1077,9 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         : 0;
     const profit = totalBilling - editorCost;
 
+    const resolvedDeadline = projectData.deadline || projectData.dueDate || '';
+    const resolvedWorkGivenDate = projectData.workGivenDate || '';
+
     const newProject: WorkProject = {
       ...projectData,
       id,
@@ -1091,7 +1094,9 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       editorId: resolvedEditorId || undefined,
       assignedEditorId: resolvedEditorId || undefined,
       workDoneBy: resolvedEditorId ? 'Assigned' : (projectData.workDoneBy || 'Me / Custom'),
-      dueDate: projectData.dueDate || '',
+      dueDate: resolvedDeadline,
+      deadline: resolvedDeadline,
+      workGivenDate: resolvedWorkGivenDate,
       notes: projectData.notes || '',
       driveFolderUrl: projectData.driveFolderUrl || '',
       clientDownloadLink: projectData.clientDownloadLink || '',
@@ -1141,8 +1146,14 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateProject = (id: string, updates: Partial<WorkProject>) => {
-    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
-    firestoreService.updateProjectDoc(id, updates).catch((err) => {
+    const resolvedUpdates: Partial<WorkProject> = { ...updates };
+    if (updates.deadline !== undefined && updates.dueDate === undefined) {
+      resolvedUpdates.dueDate = updates.deadline;
+    } else if (updates.dueDate !== undefined && updates.deadline === undefined) {
+      resolvedUpdates.deadline = updates.dueDate;
+    }
+    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...resolvedUpdates } : p)));
+    firestoreService.updateProjectDoc(id, resolvedUpdates).catch((err) => {
       console.error('Failed to update project in Firestore:', err);
     });
   };
