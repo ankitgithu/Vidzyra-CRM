@@ -27,6 +27,8 @@ import { GeminiChatModal } from './components/chat/GeminiChatModal';
 import { Client, Editor, WorkProject } from './types';
 import { AlertCircle } from 'lucide-react';
 import { getSharedPortalSession } from './utils/portalAuth';
+import { AdminAuthProvider, useAdminAuth } from './context/AdminAuthContext';
+import { AdminLogin } from './components/auth/AdminLogin';
 
 const MainApp: React.FC = () => {
   const {
@@ -90,47 +92,7 @@ const MainApp: React.FC = () => {
     );
   }
 
-  // 1. Standalone Shared Portal Route (isolated from Admin CRM)
-  const sharedPortal = getSharedPortalSession();
-  if (sharedPortal) {
-    if (sharedPortal.type === 'client') {
-      const client = clients.find((c) => c.portalToken === sharedPortal.token || c.id === sharedPortal.token);
-      if (!client) {
-        return (
-          <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-center">
-            <div className="bg-white p-8 rounded-2xl max-w-md w-full shadow-2xl space-y-4">
-              <AlertCircle className="w-12 h-12 text-rose-500 mx-auto" />
-              <h2 className="text-xl font-bold text-slate-900">Client Portal Not Found</h2>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                The requested client portal link is invalid or has expired. Please contact Vidzyra support.
-              </p>
-            </div>
-          </div>
-        );
-      }
-      return <ClientPortalView clientId={client.id} isSharedPortal={true} />;
-    }
-
-    if (sharedPortal.type === 'editor') {
-      const editor = editors.find((e) => e.portalToken === sharedPortal.token || e.id === sharedPortal.token);
-      if (!editor) {
-        return (
-          <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-center">
-            <div className="bg-white p-8 rounded-2xl max-w-md w-full shadow-2xl space-y-4">
-              <AlertCircle className="w-12 h-12 text-rose-500 mx-auto" />
-              <h2 className="text-xl font-bold text-slate-900">Editor Portal Not Found</h2>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                The requested editor portal link is invalid or has expired. Please contact Vidzyra management.
-              </p>
-            </div>
-          </div>
-        );
-      }
-      return <EditorPortalView editorId={editor.id} isSharedPortal={true} />;
-    }
-  }
-
-  // 2. Admin In-App Preview mode (when admin simulates portal within CRM)
+  // 1. Admin In-App Preview mode (when admin simulates portal within CRM)
   if (activePortalUser) {
     if (activePortalUser.type === 'client') {
       return (
@@ -399,10 +361,118 @@ const MainApp: React.FC = () => {
   );
 };
 
-export default function App() {
+/**
+ * Standalone Shared Portal view for external Clients and Editors
+ * accessed via private secure portal tokens.
+ * This runs independently of Admin credentials.
+ */
+const StandalonePortalApp: React.FC<{
+  sharedPortal: NonNullable<ReturnType<typeof getSharedPortalSession>>;
+}> = ({ sharedPortal }) => {
+  const { clients, editors, isLoading } = useCrm();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-center">
+        <div className="bg-slate-800/90 border border-slate-700/70 p-8 rounded-2xl max-w-sm w-full shadow-2xl space-y-4">
+          <div className="w-10 h-10 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <div className="space-y-1">
+            <h2 className="text-base font-bold text-white tracking-tight">Vidzyra Portal</h2>
+            <p className="text-xs text-slate-400">Loading secure portal data...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (sharedPortal.type === 'client') {
+    const client = clients.find((c) => c.portalToken === sharedPortal.token || c.id === sharedPortal.token);
+    if (!client) {
+      return (
+        <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-center">
+          <div className="bg-white p-8 rounded-2xl max-w-md w-full shadow-2xl space-y-4">
+            <AlertCircle className="w-12 h-12 text-rose-500 mx-auto" />
+            <h2 className="text-xl font-bold text-slate-900">Client Portal Not Found</h2>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              The requested client portal link is invalid or has expired. Please contact Vidzyra support.
+            </p>
+          </div>
+        </div>
+      );
+    }
+    return <ClientPortalView clientId={client.id} isSharedPortal={true} />;
+  }
+
+  if (sharedPortal.type === 'editor') {
+    const editor = editors.find((e) => e.portalToken === sharedPortal.token || e.id === sharedPortal.token);
+    if (!editor) {
+      return (
+        <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-center">
+          <div className="bg-white p-8 rounded-2xl max-w-md w-full shadow-2xl space-y-4">
+            <AlertCircle className="w-12 h-12 text-rose-500 mx-auto" />
+            <h2 className="text-xl font-bold text-slate-900">Editor Portal Not Found</h2>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              The requested editor portal link is invalid or has expired. Please contact Vidzyra management.
+            </p>
+          </div>
+        </div>
+      );
+    }
+    return <EditorPortalView editorId={editor.id} isSharedPortal={true} />;
+  }
+
+  return null;
+};
+
+/**
+ * Top-level application router enforcing Supabase Admin Auth
+ * across all Admin CRM views, while preserving external Client/Editor portals.
+ */
+const AppRouter: React.FC = () => {
+  const sharedPortal = getSharedPortalSession();
+  const { isAdmin, isAuthInitializing } = useAdminAuth();
+
+  // 1. Standalone Shared Portal Route (Client / Editor accessing via unique portal link)
+  if (sharedPortal) {
+    return (
+      <CrmProvider>
+        <StandalonePortalApp sharedPortal={sharedPortal} />
+      </CrmProvider>
+    );
+  }
+
+  // 2. Admin Authentication Verification / Session Restore state
+  if (isAuthInitializing) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-center select-none">
+        <div className="bg-slate-900/90 border border-slate-800/80 p-8 rounded-2xl max-w-sm w-full shadow-2xl space-y-4">
+          <div className="w-10 h-10 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <div className="space-y-1">
+            <h2 className="text-base font-bold text-white tracking-tight">Vidzyra CRM</h2>
+            <p className="text-xs text-slate-400">Verifying administrator credentials...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Unauthenticated / Unauthorized Admin -> Show Admin Login
+  if (!isAdmin) {
+    return <AdminLogin />;
+  }
+
+  // 4. Authenticated & Authorized Admin (akrp1432@gmail.com) -> Mount CrmProvider and Live CRM
   return (
     <CrmProvider>
       <MainApp />
     </CrmProvider>
+  );
+};
+
+export default function App() {
+  return (
+    <AdminAuthProvider>
+      <AppRouter />
+    </AdminAuthProvider>
   );
 }

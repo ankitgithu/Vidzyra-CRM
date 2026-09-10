@@ -11,11 +11,14 @@ import {
   Settings,
   ExternalLink,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
+import { useAdminAuth } from '../../context/AdminAuthContext';
 
 export const Sidebar: React.FC = () => {
   const { activeTab, setActiveTab, settings, setActivePortalUser, clients, editors } = useCrm();
+  const { logout, user } = useAdminAuth();
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -118,24 +121,55 @@ export const Sidebar: React.FC = () => {
         </div>
       </div>
 
-      {/* User / Producer Profile Footer - links to Settings */}
-      <div
-        onClick={() => {
-          setActivePortalUser(null);
-          setActiveTab('settings');
-        }}
-        className="p-4 sm:p-5 border-t border-slate-800 bg-[#0c1322] hover:bg-slate-900/80 transition cursor-pointer"
-        title="Agency & System Settings"
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center text-[11px] font-semibold text-white">
-            {settings.adminName ? settings.adminName.substring(0, 2).toUpperCase() : 'VZ'}
+      {/* User / Producer Profile Footer - links to Settings and Logout */}
+      <div className="p-3.5 border-t border-slate-800 bg-[#0c1322]">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setActivePortalUser(null);
+              setActiveTab('settings');
+            }}
+            className="flex items-center gap-2.5 min-w-0 flex-1 text-left hover:opacity-90 transition cursor-pointer p-1 rounded-lg"
+            title="Agency & System Settings"
+          >
+            <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center text-[11px] font-semibold text-white shrink-0">
+              {settings.adminName ? settings.adminName.substring(0, 2).toUpperCase() : 'VZ'}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-white truncate">
+                {settings.adminName || 'Studio Director'}
+              </p>
+              <p className="text-[10px] text-slate-400 font-mono truncate" title={user?.email || 'akrp1432@gmail.com'}>
+                {user?.email || 'akrp1432@gmail.com'}
+              </p>
+            </div>
+          </button>
+
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              id="sidebar-settings-btn"
+              onClick={() => {
+                setActivePortalUser(null);
+                setActiveTab('settings');
+              }}
+              className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 rounded-md transition cursor-pointer"
+              title="Settings"
+            >
+              <Settings className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              type="button"
+              id="sidebar-logout-btn"
+              onClick={() => logout()}
+              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 rounded-md transition cursor-pointer"
+              title="Sign Out of Admin CRM"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-white truncate">{settings.adminName || 'Studio Director'}</p>
-            <p className="text-[10px] text-slate-400 uppercase tracking-wider">{settings.adminRole || 'Vidzyra Ops'}</p>
-          </div>
-          <Settings className="w-3.5 h-3.5 text-slate-500 hover:text-slate-300" />
         </div>
       </div>
     </aside>

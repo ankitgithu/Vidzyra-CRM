@@ -11,8 +11,10 @@ import {
   Briefcase,
   UserPlus,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
+import { useAdminAuth } from '../../context/AdminAuthContext';
 
 interface HeaderProps {
   onOpenNewWork: () => void;
@@ -34,6 +36,7 @@ export const Header: React.FC<HeaderProps> = ({
   setSearchQuery,
 }) => {
   const { notifications, clients, editors, setActivePortalUser } = useCrm();
+  const { logout } = useAdminAuth();
   const [showPortalPicker, setShowPortalPicker] = useState(false);
   const unreadCount = useMemo(() => {
     return notifications.filter((n) => {
@@ -216,7 +219,7 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </button>
 
-        {/* Admin Badge */}
+        {/* Admin Badge & Logout */}
         <div className="flex items-center space-x-2 pl-2 border-l border-slate-200">
           <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 font-bold text-xs">
             <Shield className="w-4 h-4 text-indigo-600" />
@@ -225,6 +228,15 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="text-xs font-semibold text-slate-800">Admin</div>
             <div className="text-[10px] text-slate-400">Vidzyra Studio</div>
           </div>
+          <button
+            type="button"
+            id="header-logout-btn"
+            onClick={() => logout()}
+            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition ml-1 cursor-pointer"
+            title="Sign Out of Admin CRM"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </div>
     </header>
