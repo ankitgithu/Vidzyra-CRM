@@ -1,4 +1,5 @@
 import React from 'react';
+import { useAuth0 } from '@auth0/auth0-react';
 import {
   LayoutDashboard,
   Users,
@@ -11,10 +12,12 @@ import {
   Settings,
   ExternalLink,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
 
 export const Sidebar: React.FC = () => {
+  const { user, logout } = useAuth0();
   const { activeTab, setActiveTab, settings, setActivePortalUser, clients, editors } = useCrm();
 
   const navItems = [
@@ -118,25 +121,43 @@ export const Sidebar: React.FC = () => {
         </div>
       </div>
 
-      {/* User / Producer Profile Footer - links to Settings */}
-      <div
-        onClick={() => {
-          setActivePortalUser(null);
-          setActiveTab('settings');
-        }}
-        className="p-4 sm:p-5 border-t border-slate-800 bg-[#0c1322] hover:bg-slate-900/80 transition cursor-pointer"
-        title="Agency & System Settings"
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center text-[11px] font-semibold text-white">
-            {settings.adminName ? settings.adminName.substring(0, 2).toUpperCase() : 'VZ'}
+      {/* User / Producer Profile Footer - links to Settings & Logout */}
+      <div className="p-3 sm:p-4 border-t border-slate-800 bg-[#0c1322] flex items-center justify-between gap-2">
+        <div
+          onClick={() => {
+            setActivePortalUser(null);
+            setActiveTab('settings');
+          }}
+          className="flex items-center gap-3 min-w-0 flex-1 hover:opacity-85 transition cursor-pointer"
+          title="Agency & System Settings"
+        >
+          <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center text-[11px] font-semibold text-white overflow-hidden flex-shrink-0">
+            {user?.picture ? (
+              <img src={user.picture} alt={user.name || 'Admin'} className="w-full h-full object-cover" />
+            ) : (
+              <span>{user?.name ? user.name.substring(0, 2).toUpperCase() : (settings.adminName ? settings.adminName.substring(0, 2).toUpperCase() : 'VZ')}</span>
+            )}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-white truncate">{settings.adminName || 'Studio Director'}</p>
-            <p className="text-[10px] text-slate-400 uppercase tracking-wider">{settings.adminRole || 'Vidzyra Ops'}</p>
+            <p className="text-xs font-semibold text-white truncate">{user?.name || settings.adminName || 'Studio Director'}</p>
+            <p className="text-[10px] text-slate-400 uppercase tracking-wider truncate">{user?.email || settings.adminRole || 'Vidzyra Ops'}</p>
           </div>
-          <Settings className="w-3.5 h-3.5 text-slate-500 hover:text-slate-300" />
         </div>
+        <button
+          id="sidebar-logout-btn"
+          type="button"
+          onClick={() =>
+            logout({
+              logoutParams: {
+                returnTo: window.location.origin,
+              },
+            })
+          }
+          className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-md transition flex-shrink-0 cursor-pointer"
+          title="Log out of Admin"
+        >
+          <LogOut className="w-4 h-4" />
+        </button>
       </div>
     </aside>
   );

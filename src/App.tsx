@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useAuth0 } from '@auth0/auth0-react';
 import { CrmProvider, useCrm } from './context/CrmContext';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
@@ -24,6 +25,7 @@ import { EditorPortalView } from './components/portal/EditorPortalView';
 import { EditLinkModal } from './components/modals/EditLinkModal';
 import { SharePortalModal } from './components/modals/SharePortalModal';
 import { GeminiChatModal } from './components/chat/GeminiChatModal';
+import { AdminLogin } from './components/auth/AdminLogin';
 import { Client, Editor, WorkProject } from './types';
 import { AlertCircle } from 'lucide-react';
 import { getSharedPortalSession } from './utils/portalAuth';
@@ -399,10 +401,46 @@ const MainApp: React.FC = () => {
   );
 };
 
-export default function App() {
+const AdminAuthGate: React.FC = () => {
+  const { isLoading, isAuthenticated } = useAuth0();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-6 text-center antialiased">
+        <div className="bg-slate-900/90 border border-slate-800/90 p-8 rounded-2xl max-w-sm w-full shadow-2xl space-y-4">
+          <div className="w-10 h-10 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <div className="space-y-1">
+            <h2 className="text-base font-bold text-white tracking-tight">Vidzyra CRM</h2>
+            <p className="text-xs text-slate-400">Verifying admin session...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <AdminLogin />;
+  }
+
   return (
     <CrmProvider>
       <MainApp />
     </CrmProvider>
   );
+};
+
+export default function App() {
+  const sharedPortal = getSharedPortalSession();
+
+  // Standalone shared portal links work independently without requiring Admin Auth
+  if (sharedPortal) {
+    return (
+      <CrmProvider>
+        <MainApp />
+      </CrmProvider>
+    );
+  }
+
+  // Admin CRM requires Auth0 authentication
+  return <AdminAuthGate />;
 }

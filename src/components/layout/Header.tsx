@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useAuth0 } from '@auth0/auth0-react';
 import {
   Bell,
   Plus,
@@ -11,6 +12,7 @@ import {
   Briefcase,
   UserPlus,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
 
@@ -33,6 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
   searchQuery,
   setSearchQuery,
 }) => {
+  const { user, logout } = useAuth0();
   const { notifications, clients, editors, setActivePortalUser } = useCrm();
   const [showPortalPicker, setShowPortalPicker] = useState(false);
   const unreadCount = useMemo(() => {
@@ -216,15 +219,38 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </button>
 
-        {/* Admin Badge */}
+        {/* Admin Badge & Logout */}
         <div className="flex items-center space-x-2 pl-2 border-l border-slate-200">
-          <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 font-bold text-xs">
-            <Shield className="w-4 h-4 text-indigo-600" />
+          <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 font-bold text-xs overflow-hidden flex-shrink-0">
+            {user?.picture ? (
+              <img src={user.picture} alt={user.name || 'Admin'} className="w-full h-full object-cover" />
+            ) : (
+              <Shield className="w-4 h-4 text-indigo-600" />
+            )}
           </div>
-          <div className="hidden sm:block text-left">
-            <div className="text-xs font-semibold text-slate-800">Admin</div>
-            <div className="text-[10px] text-slate-400">Vidzyra Studio</div>
+          <div className="hidden sm:block text-left max-w-[130px]">
+            <div className="text-xs font-semibold text-slate-800 truncate" title={user?.name || user?.email || 'Admin'}>
+              {user?.name || user?.nickname || 'Admin'}
+            </div>
+            <div className="text-[10px] text-slate-400 truncate" title={user?.email || 'Vidzyra Studio'}>
+              {user?.email || 'Vidzyra Studio'}
+            </div>
           </div>
+          <button
+            id="header-logout-btn"
+            type="button"
+            onClick={() =>
+              logout({
+                logoutParams: {
+                  returnTo: window.location.origin,
+                },
+              })
+            }
+            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition ml-0.5 cursor-pointer"
+            title="Log out of Admin"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </div>
     </header>
