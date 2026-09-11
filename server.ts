@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
@@ -215,11 +216,32 @@ ${typeof crmContext === 'string' ? crmContext : JSON.stringify(crmContext, null,
       appType: 'spa',
     });
     app.use(vite.middlewares);
+
+    // Fallback for SPA routing in development so direct navigation and refresh never 404
+    app.use('*', async (req, res, next) => {
+      const url = req.originalUrl;
+      if (url.startsWith('/api/')) {
+        return next();
+      }
+      try {
+        const indexPath = path.resolve(process.cwd(), 'index.html');
+        let html = await fs.promises.readFile(indexPath, 'utf-8');
+        html = await vite.transformIndexHtml(url, html);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+      } catch (e) {
+        next(e);
+      }
+    });
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      const distIndex = path.join(distPath, 'index.html');
+      if (fs.existsSync(distIndex)) {
+        res.sendFile(distIndex);
+      } else {
+        res.sendFile(path.join(process.cwd(), 'index.html'));
+      }
     });
   }
 

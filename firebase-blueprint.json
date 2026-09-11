@@ -54,6 +54,8 @@
         "assignedTo": { "type": "string", "maxLength": 128 },
         "editorRate": { "type": "number" },
         "dueDate": { "type": "string", "maxLength": 100 },
+        "workGivenDate": { "type": "string", "maxLength": 100 },
+        "deadline": { "type": "string", "maxLength": 100 },
         "notes": { "type": "string", "maxLength": 4000 },
         "status": { "type": "string", "maxLength": 50 },
         "createdAt": { "type": "string", "maxLength": 100 },

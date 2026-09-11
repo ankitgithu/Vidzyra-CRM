@@ -28,8 +28,8 @@ export const SharePortalModal: React.FC<SharePortalModalProps> = ({
   if (!target) return null;
 
   // Build the permanent private portal link
-  const origin = window.location.origin + window.location.pathname;
-  const portalUrl = `${origin}?portal=${entityType}&token=${target.portalToken}`;
+  const baseUrl = window.location.origin;
+  const portalUrl = `${baseUrl}?portal=${entityType}&token=${target.portalToken}`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(portalUrl);
