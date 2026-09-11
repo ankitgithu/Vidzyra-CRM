@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
@@ -208,18 +209,60 @@ ${typeof crmContext === 'string' ? crmContext : JSON.stringify(crmContext, null,
     }
   });
 
-  // Vite middleware in dev; static files in prod
-  if (process.env.NODE_ENV !== 'production') {
+  // Vite middleware in dev; static files & SPA fallback in prod
+  const distPath = path.resolve(process.cwd(), 'dist');
+  const distIndexPath = path.join(distPath, 'index.html');
+  const hasDist = fs.existsSync(distIndexPath);
+
+  const isProduction = process.env.NODE_ENV === 'production' || hasDist;
+
+  if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
+
+    // Explicit fallback for client-side navigation in development
+    app.use('*', async (req, res, next) => {
+      if (req.originalUrl.startsWith('/api/')) {
+        return res.status(404).json({ error: 'API route not found' });
+      }
+      try {
+        const rootIndexPath = path.resolve(process.cwd(), 'index.html');
+        let template = fs.readFileSync(rootIndexPath, 'utf-8');
+        template = await vite.transformIndexHtml(req.originalUrl, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e) {
+        next(e);
+      }
+    });
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    // Serve static compiled assets
     app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+
+    // Explicit portal routes to ensure shared client/editor links serve index.html with 200 OK
+    const portalRoutes = [
+      '/portal',
+      '/portal/*',
+      '/client-portal',
+      '/client-portal/*',
+      '/editor-portal',
+      '/editor-portal/*',
+      '/share',
+      '/share/*',
+    ];
+
+    app.get(portalRoutes, (_req, res) => {
+      res.sendFile(distIndexPath);
+    });
+
+    // Catch-all for SPA routes (excludes /api/ which was registered before)
+    app.get('*', (req, res) => {
+      if (req.path.startsWith('/api/')) {
+        return res.status(404).json({ error: 'API route not found' });
+      }
+      res.sendFile(distIndexPath);
     });
   }
 

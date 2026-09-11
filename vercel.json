@@ -1,0 +1,28 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/portal/(.*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/portal",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/client-portal(.*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/editor-portal(.*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
