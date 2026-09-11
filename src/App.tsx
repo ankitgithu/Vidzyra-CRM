@@ -96,14 +96,7 @@ const MainApp: React.FC = () => {
   const sharedPortal = getSharedPortalSession();
   if (sharedPortal) {
     if (sharedPortal.type === 'client') {
-      const token = sharedPortal.token?.trim().toLowerCase();
-      const client = clients.find((c) => {
-        if (!token) return true;
-        const cToken = c.portalToken?.trim().toLowerCase();
-        const cId = c.id?.trim().toLowerCase();
-        return cToken === token || cId === token;
-      }) || (clients.length > 0 && !token ? clients[0] : undefined);
-
+      const client = clients.find((c) => c.portalToken === sharedPortal.token || c.id === sharedPortal.token);
       if (!client) {
         return (
           <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-center">
@@ -121,14 +114,7 @@ const MainApp: React.FC = () => {
     }
 
     if (sharedPortal.type === 'editor') {
-      const token = sharedPortal.token?.trim().toLowerCase();
-      const editor = editors.find((e) => {
-        if (!token) return true;
-        const eToken = e.portalToken?.trim().toLowerCase();
-        const eId = e.id?.trim().toLowerCase();
-        return eToken === token || eId === token;
-      }) || (editors.length > 0 && !token ? editors[0] : undefined);
-
+      const editor = editors.find((e) => e.portalToken === sharedPortal.token || e.id === sharedPortal.token);
       if (!editor) {
         return (
           <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-center">

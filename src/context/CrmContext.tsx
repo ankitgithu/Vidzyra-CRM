@@ -27,7 +27,6 @@ import { initialSettings } from '../mockData';
 import * as firestoreService from '../services/firestoreService';
 import { evaluateMessageModeration } from '../utils/chatModeration';
 import { processDueReminders } from '../utils/reminders';
-import { getSharedPortalSession } from '../utils/portalAuth';
 
 export interface CrmContextType {
   clients: Client[];
@@ -355,41 +354,22 @@ export function getInitialTab(): string {
   return 'dashboard';
 }
 
-const getLocalCache = <T,>(key: string, fallback: T): T => {
-  if (typeof window === 'undefined') return fallback;
-  try {
-    const raw = localStorage.getItem(`vidzyra_${key}`);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch {
-    return fallback;
-  }
-};
-
-const setLocalCache = (key: string, data: any) => {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(`vidzyra_${key}`, JSON.stringify(data));
-  } catch {
-    // ignore
-  }
-};
-
 export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Empty default database state - NO DEMO OR MOCK DATA
-  const [clients, setClients] = useState<Client[]>(() => getLocalCache('clients', []));
-  const [editors, setEditors] = useState<Editor[]>(() => getLocalCache('editors', []));
-  const [projects, setProjects] = useState<WorkProject[]>(() => getLocalCache('projects', []));
-  const [clientPayments, setClientPayments] = useState<ClientPayment[]>(() => getLocalCache('clientPayments', []));
-  const [editorPayments, setEditorPayments] = useState<EditorPayment[]>(() => getLocalCache('editorPayments', []));
-  const [expenses, setExpenses] = useState<Expense[]>(() => getLocalCache('expenses', []));
-  const [activities, setActivities] = useState<Activity[]>(() => getLocalCache('activities', []));
-  const [notifications, setNotifications] = useState<NotificationItem[]>(() => getLocalCache('notifications', []));
-  const [settings, setSettings] = useState<BusinessSettings>(() => getLocalCache('settings', initialSettings));
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => getLocalCache('chatMessages', []));
-  const [ratings, setRatings] = useState<Rating[]>(() => getLocalCache('ratings', []));
-  const [invoices, setInvoices] = useState<Invoice[]>(() => getLocalCache('invoices', []));
-  const [receipts, setReceipts] = useState<Receipt[]>(() => getLocalCache('receipts', []));
-  const [calendarTasks, setCalendarTasks] = useState<CalendarTask[]>(() => getLocalCache('calendarTasks', []));
+  const [clients, setClients] = useState<Client[]>([]);
+  const [editors, setEditors] = useState<Editor[]>([]);
+  const [projects, setProjects] = useState<WorkProject[]>([]);
+  const [clientPayments, setClientPayments] = useState<ClientPayment[]>([]);
+  const [editorPayments, setEditorPayments] = useState<EditorPayment[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [settings, setSettings] = useState<BusinessSettings>(initialSettings);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [ratings, setRatings] = useState<Rating[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [calendarTasks, setCalendarTasks] = useState<CalendarTask[]>([]);
 
   // Firestore status
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -411,7 +391,6 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setSelectedWorkId = (workId: string | null, updateHistory: boolean = true) => {
     setSelectedWorkIdState(workId);
     if (typeof window !== 'undefined' && updateHistory) {
-      if (getSharedPortalSession()) return;
       if (workId) {
         const targetRoute = `/work/${workId}`;
         try {
@@ -454,7 +433,6 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Ignore
     }
     if (typeof window !== 'undefined') {
-      if (getSharedPortalSession()) return;
       const targetRoute = TAB_TO_ROUTE[tab] || `/${tab}`;
       try {
         if (window.location.pathname !== targetRoute) {
@@ -476,7 +454,6 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Synchronize browser history & hash changes
   useEffect(() => {
     const handleRouteSync = (e?: Event) => {
-      if (getSharedPortalSession()) return;
       const tab = getInitialTab();
       setActiveTabState(tab);
       const popState = (e as PopStateEvent)?.state;
@@ -514,17 +491,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubClients = firestoreService.subscribeClients(
       (data) => {
         if (active) {
-          if (data && data.length > 0) {
-            setClients(data);
-            setLocalCache('clients', data);
-          } else {
-            const cached = getLocalCache<Client[]>('clients', []);
-            if (cached.length > 0) {
-              setClients(cached);
-            } else {
-              setClients([]);
-            }
-          }
+          setClients(data);
           checkReady();
         }
       },
@@ -536,17 +503,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubEditors = firestoreService.subscribeEditors(
       (data) => {
         if (active) {
-          if (data && data.length > 0) {
-            setEditors(data);
-            setLocalCache('editors', data);
-          } else {
-            const cached = getLocalCache<Editor[]>('editors', []);
-            if (cached.length > 0) {
-              setEditors(cached);
-            } else {
-              setEditors([]);
-            }
-          }
+          setEditors(data);
           checkReady();
         }
       },
@@ -558,17 +515,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubProjects = firestoreService.subscribeProjects(
       (data) => {
         if (active) {
-          if (data && data.length > 0) {
-            setProjects(data);
-            setLocalCache('projects', data);
-          } else {
-            const cached = getLocalCache<WorkProject[]>('projects', []);
-            if (cached.length > 0) {
-              setProjects(cached);
-            } else {
-              setProjects([]);
-            }
-          }
+          setProjects(data);
           checkReady();
         }
       },
@@ -857,11 +804,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString(),
     };
 
-    setClients((prev) => {
-      const updated = [newClient, ...prev];
-      setLocalCache('clients', updated);
-      return updated;
-    });
+    setClients((prev) => [newClient, ...prev]);
     firestoreService.createClientDoc(newClient).catch((err) => {
       console.error('Failed to create client in Firestore:', err);
     });
@@ -973,11 +916,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString(),
     };
 
-    setEditors((prev) => {
-      const updated = [newEditor, ...prev];
-      setLocalCache('editors', updated);
-      return updated;
-    });
+    setEditors((prev) => [newEditor, ...prev]);
     firestoreService.createEditorDoc(newEditor).catch((err) => {
       console.error('Failed to create editor in Firestore:', err);
     });
