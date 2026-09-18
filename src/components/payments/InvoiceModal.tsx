@@ -15,6 +15,14 @@ import { useCrm } from '../../context/CrmContext';
 import { Invoice, InvoiceItem, PaymentStatus } from '../../types';
 import { generateInvoicePdf } from '../../utils/pdfGenerator';
 
+interface InvoiceItemFormState {
+  id: string;
+  description: string;
+  quantity: number | string;
+  rate: number | string;
+  amount: number;
+}
+
 interface InvoiceModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -55,8 +63,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     existingInvoice?.dueDate ||
       new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
-  const [items, setItems] = useState<InvoiceItem[]>(
-    existingInvoice?.items || [
+  const [items, setItems] = useState<InvoiceItemFormState[]>(
+    (existingInvoice?.items as InvoiceItemFormState[]) || [
       {
         id: 'item-1',
         description: 'Video Editing Deliverables',
@@ -66,8 +74,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       },
     ]
   );
-  const [taxPercent, setTaxPercent] = useState<number>(existingInvoice?.tax && existingInvoice?.subtotal ? Math.round((existingInvoice.tax / existingInvoice.subtotal) * 100) : 0);
-  const [paidAmount, setPaidAmount] = useState<number>(existingInvoice?.paidAmount || 0);
+  const [taxPercent, setTaxPercent] = useState<number | string>(existingInvoice?.tax && existingInvoice?.subtotal ? Math.round((existingInvoice.tax / existingInvoice.subtotal) * 100) : 0);
+  const [paidAmount, setPaidAmount] = useState<number | string>(existingInvoice?.paidAmount || 0);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(
     existingInvoice?.paymentStatus || 'Pending'
   );
@@ -138,13 +146,13 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     } else if (newStatus === 'Pending') {
       setPaidAmount(0);
     } else if (newStatus === 'Partial') {
-      if (paidAmount === 0 || paidAmount >= total) {
+      if (Number(paidAmount) === 0 || Number(paidAmount) >= total) {
         setPaidAmount(Math.round(total / 2));
       }
     }
   };
 
-  const handleItemChange = (index: number, field: keyof InvoiceItem, val: any) => {
+  const handleItemChange = (index: number, field: keyof InvoiceItemFormState, val: any) => {
     setItems((prev) => {
       const updated = [...prev];
       const item = { ...updated[index], [field]: val };
@@ -218,7 +226,12 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       clientPhone: selectedClient?.phone || selectedClient?.whatsapp || '',
       date,
       dueDate,
-      items,
+      items: items.map((it) => ({
+        ...it,
+        quantity: Math.max(1, Number(it.quantity) || 1),
+        rate: Math.max(0, Number(it.rate) || 0),
+        amount: (Math.max(1, Number(it.quantity) || 1)) * (Math.max(0, Number(it.rate) || 0)),
+      })),
       subtotal,
       tax: taxAmount,
       total,
@@ -409,9 +422,12 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                           type="number"
                           min="1"
                           value={item.quantity}
-                          onChange={(e) =>
-                            handleItemChange(idx, 'quantity', Math.max(1, parseInt(e.target.value) || 1))
-                          }
+                          onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
+                          onBlur={() => {
+                            if (item.quantity === '' || Number(item.quantity) < 1) {
+                              handleItemChange(idx, 'quantity', 1);
+                            }
+                          }}
                           className="w-full text-center px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                         />
                       </td>
@@ -420,9 +436,12 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                           type="number"
                           min="0"
                           value={item.rate}
-                          onChange={(e) =>
-                            handleItemChange(idx, 'rate', Math.max(0, parseFloat(e.target.value) || 0))
-                          }
+                          onChange={(e) => handleItemChange(idx, 'rate', e.target.value)}
+                          onBlur={() => {
+                            if (item.rate === '') {
+                              handleItemChange(idx, 'rate', 0);
+                            }
+                          }}
                           className="w-full text-right px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                         />
                       </td>
@@ -490,7 +509,10 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     min="0"
                     max="100"
                     value={taxPercent}
-                    onChange={(e) => setTaxPercent(Math.max(0, parseFloat(e.target.value) || 0))}
+                    onChange={(e) => setTaxPercent(e.target.value)}
+                    onBlur={() => {
+                      if (taxPercent === '') setTaxPercent(0);
+                    }}
                     className="w-16 px-1.5 py-0.5 text-center bg-white border border-slate-200 rounded text-xs ml-1"
                   />
                 </span>
@@ -509,7 +531,20 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   min="0"
                   max={total}
                   value={paidAmount}
-                  onChange={(e) => handlePaidAmountChange(parseFloat(e.target.value) || 0)}
+                  onChange={(e) => {
+                    setPaidAmount(e.target.value);
+                    const num = Math.max(0, Number(e.target.value) || 0);
+                    if (num >= total && total > 0) {
+                      setPaymentStatus('Paid');
+                    } else if (num > 0) {
+                      setPaymentStatus('Partial');
+                    } else {
+                      setPaymentStatus('Pending');
+                    }
+                  }}
+                  onBlur={() => {
+                    if (paidAmount === '') setPaidAmount(0);
+                  }}
                   className="w-28 text-right px-2 py-1 bg-white border border-slate-200 rounded text-xs"
                 />
               </div>

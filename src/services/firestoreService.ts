@@ -691,6 +691,19 @@ export async function createExpenseDoc(expense: Expense): Promise<void> {
   }
 }
 
+export async function updateExpenseDoc(id: string, updates: Partial<Expense>): Promise<void> {
+  try {
+    const docRef = doc(db, COLLECTIONS.EXPENSES, id);
+    await updateDoc(docRef, cleanFirestoreData({
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    }));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `${COLLECTIONS.EXPENSES}/${id}`);
+    throw err;
+  }
+}
+
 export async function deleteExpenseDoc(id: string): Promise<void> {
   try {
     const docRef = doc(db, COLLECTIONS.EXPENSES, id);
@@ -741,6 +754,25 @@ export async function createActivityDoc(act: Activity): Promise<void> {
     await setDoc(docRef, cleanFirestoreData(act), { merge: true });
   } catch (err) {
     handleFirestoreError(err, OperationType.CREATE, `${COLLECTIONS.ACTIVITIES}/${act.id}`);
+    throw err;
+  }
+}
+
+export async function clearActivitiesDocs(currentActivities: Activity[]): Promise<void> {
+  try {
+    if (!currentActivities || currentActivities.length === 0) return;
+    const chunkSize = 400;
+    for (let i = 0; i < currentActivities.length; i += chunkSize) {
+      const chunk = currentActivities.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach((act) => {
+        const docRef = doc(db, COLLECTIONS.ACTIVITIES, act.id);
+        batch.delete(docRef);
+      });
+      await batch.commit();
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, COLLECTIONS.ACTIVITIES);
     throw err;
   }
 }

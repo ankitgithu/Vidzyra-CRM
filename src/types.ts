@@ -221,10 +221,14 @@ export interface Expense {
   title?: string;
   category: string;
   amount: number;
+  totalAmount?: number;
+  paidAmount?: number;
+  remainingAmount?: number;
   date: string;
   paymentMethod?: string;
   notes: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export type ActivityEntityType =

@@ -26,11 +26,11 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
   const [workType, setWorkType] = useState<WorkType>('Video Editing');
-  const [quantity, setQuantity] = useState<number>(1);
-  const [clientRate, setClientRate] = useState<number>(settings.defaultClientRate || 2000);
+  const [quantity, setQuantity] = useState<number | string>(1);
+  const [clientRate, setClientRate] = useState<number | string>(settings.defaultClientRate || 2000);
   const [workDoneBy, setWorkDoneBy] = useState<WorkDoneBy>('Me / Custom');
   const [assignedTo, setAssignedTo] = useState<string>('');
-  const [editorRate, setEditorRate] = useState<number>(settings.defaultEditorRate || 900);
+  const [editorRate, setEditorRate] = useState<number | string>(settings.defaultEditorRate || 900);
   const [status, setStatus] = useState<ProjectStatus>('Pending');
   const [workGivenDate, setWorkGivenDate] = useState<string>('');
   const [deadline, setDeadline] = useState<string>('');
@@ -116,8 +116,11 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
 
   if (!isOpen) return null;
 
-  const totalBilling = quantity * clientRate;
-  const editorCost = workDoneBy === 'Assigned' ? quantity * editorRate : 0;
+  const numQuantity = Number(quantity) || 1;
+  const numClientRate = Number(clientRate) || 0;
+  const numEditorRate = Number(editorRate) || 0;
+  const totalBilling = numQuantity * numClientRate;
+  const editorCost = workDoneBy === 'Assigned' ? numQuantity * numEditorRate : 0;
   const profit = totalBilling - editorCost;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -260,7 +263,10 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
                 min="1"
                 required
                 value={quantity}
-                onChange={(e) => setQuantity(Number(e.target.value))}
+                onChange={(e) => setQuantity(e.target.value)}
+                onBlur={() => {
+                  if (quantity === '') setQuantity(1);
+                }}
                 className="w-full px-2.5 py-2 bg-slate-50 border border-slate-300 rounded-lg"
               />
             </div>
@@ -345,7 +351,10 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
                   min="0"
                   required
                   value={clientRate}
-                  onChange={(e) => setClientRate(Number(e.target.value))}
+                  onChange={(e) => setClientRate(e.target.value)}
+                  onBlur={() => {
+                    if (clientRate === '') setClientRate(0);
+                  }}
                   className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg"
                 />
               </div>
@@ -412,7 +421,10 @@ export const WorkFormModal: React.FC<WorkFormModalProps> = ({
                     type="number"
                     min="0"
                     value={editorRate}
-                    onChange={(e) => setEditorRate(Number(e.target.value))}
+                    onChange={(e) => setEditorRate(e.target.value)}
+                    onBlur={() => {
+                      if (editorRate === '') setEditorRate(0);
+                    }}
                     className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg"
                   />
                 </div>

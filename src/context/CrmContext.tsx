@@ -148,6 +148,7 @@ export interface CrmContextType {
 
   // Expenses
   addExpense: (expenseData: Omit<Expense, 'id' | 'createdAt'>) => Expense;
+  updateExpense: (id: string, updates: Partial<Expense>) => Expense | null;
   deleteExpense: (id: string) => void;
 
   // Notifications & Activities
@@ -158,6 +159,7 @@ export interface CrmContextType {
   deleteNotification: (id: string) => void;
   clearAllNotifications: (filter?: { role?: 'admin' | 'client' | 'editor'; id?: string }) => void;
   addActivity: (activity: Omit<Activity, 'id' | 'timestamp' | 'when'>) => void;
+  clearActivities: () => Promise<void>;
 
   // Project Live Chat (Admin Moderated)
   sendChatMessage: (params: {
@@ -701,6 +703,17 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.error('Failed to write activity to Firestore:', err);
     });
   }, []);
+
+  // Helper to clear all activities
+  const clearActivities = useCallback(async () => {
+    const current = [...activities];
+    setActivities([]);
+    try {
+      await firestoreService.clearActivitiesDocs(current);
+    } catch (err) {
+      console.error('Failed to clear activities in Firestore:', err);
+    }
+  }, [activities]);
 
   // Helper to add a single notification
   const addNotification = useCallback(
@@ -2277,6 +2290,40 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newExpense;
   };
 
+  const updateExpense = (id: string, updates: Partial<Expense>): Expense | null => {
+    let updatedExpense: Expense | null = null;
+    setExpenses((prev) =>
+      prev.map((e) => {
+        if (e.id === id) {
+          updatedExpense = {
+            ...e,
+            ...updates,
+            updatedAt: new Date().toISOString(),
+          };
+          return updatedExpense;
+        }
+        return e;
+      })
+    );
+
+    if (updatedExpense) {
+      firestoreService.updateExpenseDoc(id, updates).catch((err) => {
+        console.error('Failed to update expense in Firestore:', err);
+      });
+
+      const exp = updatedExpense as Expense;
+      addActivity({
+        who: 'Admin',
+        action: 'Expense updated',
+        what: `Updated expense "${exp.name || exp.title}" (Paid: ₹${(exp.paidAmount || exp.amount || 0).toLocaleString('en-IN')})`,
+        entityType: 'expense',
+        entityId: id,
+      });
+    }
+
+    return updatedExpense;
+  };
+
   const deleteExpense = (id: string) => {
     const expense = expenses.find((e) => e.id === id);
     if (!expense) return;
@@ -2455,8 +2502,10 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const completed = clientProjects.filter((p) => p.status === 'Completed' || p.status === 'Delivered' || p.status === 'Approved').length;
     const pending = totalWork - completed;
 
-    const totalBilling = clientProjects.reduce((acc, p) => acc + (p.totalBilling || 0), 0);
-    const clientPays = clientPayments.filter((p) => p.clientId === clientId);
+    const client = clients.find((c) => c.id === clientId);
+    const projectBilling = clientProjects.reduce((acc, p) => acc + (p.totalBilling || 0), 0);
+    const totalBilling = projectBilling > 0 ? projectBilling : (client?.defaultClientRate || 0);
+    const clientPays = clientPayments.filter((p) => p.clientId === clientId || (p as any).client_id === clientId);
     const totalPaid = clientPays.reduce((acc, p) => acc + (p.amount || 0), 0);
     const remaining = Math.max(0, totalBilling - totalPaid);
 
@@ -2488,8 +2537,10 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const completed = editorProjects.filter((p) => p.status === 'Completed' || p.status === 'Delivered' || p.status === 'Approved').length;
     const pending = assignedWork - completed;
 
-    const totalCost = editorProjects.reduce((acc, p) => acc + (p.quantity * (p.editorRate || 0)), 0);
-    const editorPays = editorPayments.filter((p) => p.editorId === editorId);
+    const editor = editors.find((e) => e.id === editorId);
+    const projectCost = editorProjects.reduce((acc, p) => acc + (p.quantity * (p.editorRate || 0)), 0);
+    const totalCost = projectCost > 0 ? projectCost : (editor?.editorRate || 0);
+    const editorPays = editorPayments.filter((p) => p.editorId === editorId || (p as any).editor_id === editorId);
     const totalPaid = editorPays.reduce((acc, p) => acc + (p.amount || 0), 0);
     const remaining = Math.max(0, totalCost - totalPaid);
 
@@ -2954,6 +3005,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateEditorPayment,
         deleteEditorPayment,
         addExpense,
+        updateExpense,
         deleteExpense,
         addNotification,
         addNotifications,
@@ -2962,6 +3014,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteNotification,
         clearAllNotifications,
         addActivity,
+        clearActivities,
         updateSettings,
         getFinancialPulse,
         financialMetrics,

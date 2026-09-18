@@ -11,17 +11,16 @@ import {
   CreditCard,
   Briefcase,
   UserPlus,
-  Sparkles,
   LogOut,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
+import { AdminProfileModal } from '../auth/AdminProfileModal';
 
 interface HeaderProps {
   onOpenNewWork: () => void;
   onOpenNewClient: () => void;
   onOpenNewPayment: () => void;
   onToggleNotifications: () => void;
-  onOpenGeminiChat?: () => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
 }
@@ -31,13 +30,13 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenNewClient,
   onOpenNewPayment,
   onToggleNotifications,
-  onOpenGeminiChat,
   searchQuery,
   setSearchQuery,
 }) => {
   const { user, logout } = useAuth0();
-  const { notifications, clients, editors, setActivePortalUser } = useCrm();
+  const { notifications, clients, editors, setActivePortalUser, setActiveTab } = useCrm();
   const [showPortalPicker, setShowPortalPicker] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const unreadCount = useMemo(() => {
     return notifications.filter((n) => {
       if (n.read) return false;
@@ -187,25 +186,11 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* Gemini AI Chat Icon Button */}
-        {onOpenGeminiChat && (
-          <button
-            id="header-gemini-chat-btn"
-            type="button"
-            onClick={onOpenGeminiChat}
-            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/90 text-indigo-700 rounded-lg text-xs font-semibold transition shadow-2xs cursor-pointer"
-            title="Open Gemini CRM AI Chatbot"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-            <span className="hidden sm:inline">Ask Gemini</span>
-          </button>
-        )}
-
         {/* Notifications Icon Button */}
         <button
           id="header-notifications-btn"
           onClick={onToggleNotifications}
-          className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition"
+          className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition cursor-pointer"
           aria-label="View notifications"
         >
           <Bell className="w-5 h-5" />
@@ -219,23 +204,31 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </button>
 
-        {/* Admin Badge & Logout */}
+        {/* Admin Profile Badge (Clickable) */}
         <div className="flex items-center space-x-2 pl-2 border-l border-slate-200">
-          <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 font-bold text-xs overflow-hidden flex-shrink-0">
-            {user?.picture ? (
-              <img src={user.picture} alt={user.name || 'Admin'} className="w-full h-full object-cover" />
-            ) : (
-              <Shield className="w-4 h-4 text-indigo-600" />
-            )}
-          </div>
-          <div className="hidden sm:block text-left max-w-[130px]">
-            <div className="text-xs font-semibold text-slate-800 truncate" title={user?.name || user?.email || 'Admin'}>
-              {user?.name || user?.nickname || 'Admin'}
+          <button
+            id="header-admin-profile-btn"
+            type="button"
+            onClick={() => setIsProfileModalOpen(true)}
+            className="flex items-center space-x-2 hover:opacity-85 transition cursor-pointer text-left focus:outline-hidden"
+            title="View Admin Profile & Login Devices"
+          >
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 font-bold text-xs overflow-hidden flex-shrink-0">
+              {user?.picture ? (
+                <img src={user.picture} alt={user.name || 'Admin'} className="w-full h-full object-cover" />
+              ) : (
+                <Shield className="w-4 h-4 text-indigo-600" />
+              )}
             </div>
-            <div className="text-[10px] text-slate-400 truncate" title={user?.email || 'Vidzyra Studio'}>
-              {user?.email || 'Vidzyra Studio'}
+            <div className="hidden sm:block text-left max-w-[130px]">
+              <div className="text-xs font-semibold text-slate-800 truncate" title={user?.name || user?.email || 'Admin'}>
+                {user?.name || user?.nickname || 'Admin'}
+              </div>
+              <div className="text-[10px] text-slate-400 truncate" title={user?.email || 'Vidzyra Studio'}>
+                {user?.email || 'Vidzyra Studio'}
+              </div>
             </div>
-          </div>
+          </button>
           <button
             id="header-logout-btn"
             type="button"
@@ -253,6 +246,15 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </div>
       </div>
+
+      <AdminProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        onOpenSettings={() => {
+          setActivePortalUser(null);
+          setActiveTab('settings');
+        }}
+      />
     </header>
   );
 };

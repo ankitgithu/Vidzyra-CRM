@@ -74,9 +74,9 @@ export const Settings: React.FC = () => {
         ]
   );
   const [newWorkTypeInput, setNewWorkTypeInput] = useState('');
-  const [defaultClientRate, setDefaultClientRate] = useState(settings.defaultClientRate || 2000);
-  const [defaultEditorRate, setDefaultEditorRate] = useState(settings.defaultEditorRate || 900);
-  const [defaultRevisionLimit, setDefaultRevisionLimit] = useState(settings.defaultRevisionLimit || 2);
+  const [defaultClientRate, setDefaultClientRate] = useState<number | string>(settings.defaultClientRate || 2000);
+  const [defaultEditorRate, setDefaultEditorRate] = useState<number | string>(settings.defaultEditorRate || 900);
+  const [defaultRevisionLimit, setDefaultRevisionLimit] = useState<number | string>(settings.defaultRevisionLimit || 2);
 
   // 4. Notifications
   const [emailNotifications, setEmailNotifications] = useState(settings.emailNotifications ?? true);
@@ -115,7 +115,7 @@ export const Settings: React.FC = () => {
   const [adminName, setAdminName] = useState(settings.adminName || 'Studio Director');
   const [adminEmail, setAdminEmail] = useState(settings.adminEmail || 'admin@vidzyra.com');
   const [adminRole, setAdminRole] = useState(settings.adminRole || 'Super Admin');
-  const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState(settings.sessionTimeoutMinutes || 60);
+  const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState<number | string>(settings.sessionTimeoutMinutes || 60);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(settings.twoFactorEnabled ?? false);
 
   // Keep state synced with context if updated elsewhere
@@ -524,7 +524,10 @@ export const Settings: React.FC = () => {
                   id="settings-default-client-rate"
                   type="number"
                   value={defaultClientRate}
-                  onChange={(e) => setDefaultClientRate(Number(e.target.value))}
+                  onChange={(e) => setDefaultClientRate(e.target.value)}
+                  onBlur={() => {
+                    if (defaultClientRate === '') setDefaultClientRate(2000);
+                  }}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-900 focus:bg-white"
                 />
                 <span className="text-[10px] text-slate-400 mt-1 block">Auto-fills when creating new client projects.</span>
@@ -536,7 +539,10 @@ export const Settings: React.FC = () => {
                   id="settings-default-editor-rate"
                   type="number"
                   value={defaultEditorRate}
-                  onChange={(e) => setDefaultEditorRate(Number(e.target.value))}
+                  onChange={(e) => setDefaultEditorRate(e.target.value)}
+                  onBlur={() => {
+                    if (defaultEditorRate === '') setDefaultEditorRate(900);
+                  }}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-900 focus:bg-white"
                 />
                 <span className="text-[10px] text-slate-400 mt-1 block">Auto-fills when assigning projects to editors.</span>
@@ -548,7 +554,10 @@ export const Settings: React.FC = () => {
                   id="settings-default-revision-limit"
                   type="number"
                   value={defaultRevisionLimit}
-                  onChange={(e) => setDefaultRevisionLimit(Number(e.target.value))}
+                  onChange={(e) => setDefaultRevisionLimit(e.target.value)}
+                  onBlur={() => {
+                    if (defaultRevisionLimit === '') setDefaultRevisionLimit(2);
+                  }}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-900 focus:bg-white"
                 />
                 <span className="text-[10px] text-slate-400 mt-1 block">Free rounds before billable add-ons.</span>
@@ -899,7 +908,10 @@ export const Settings: React.FC = () => {
                   id="settings-session-timeout"
                   type="number"
                   value={sessionTimeoutMinutes}
-                  onChange={(e) => setSessionTimeoutMinutes(Number(e.target.value))}
+                  onChange={(e) => setSessionTimeoutMinutes(e.target.value)}
+                  onBlur={() => {
+                    if (sessionTimeoutMinutes === '') setSessionTimeoutMinutes(60);
+                  }}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:bg-white"
                 />
               </div>

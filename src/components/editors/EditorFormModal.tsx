@@ -19,7 +19,7 @@ export const EditorFormModal: React.FC<EditorFormModalProps> = ({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [contact, setContact] = useState('');
-  const [editorRate, setEditorRate] = useState<number>(900);
+  const [editorRate, setEditorRate] = useState<number | string>(900);
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
@@ -127,7 +127,12 @@ export const EditorFormModal: React.FC<EditorFormModalProps> = ({
                 type="number"
                 min="0"
                 value={editorRate}
-                onChange={(e) => setEditorRate(Number(e.target.value))}
+                onChange={(e) => setEditorRate(e.target.value)}
+                onBlur={() => {
+                  if (editorRate === '') {
+                    setEditorRate(0);
+                  }
+                }}
                 className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
               />
             </div>

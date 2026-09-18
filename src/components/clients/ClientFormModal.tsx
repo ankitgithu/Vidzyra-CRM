@@ -21,7 +21,7 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
   const [phone, setPhone] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [clientType, setClientType] = useState<ClientType>('Regular');
-  const [defaultClientRate, setDefaultClientRate] = useState<number>(2000);
+  const [defaultClientRate, setDefaultClientRate] = useState<number | string>(2000);
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
@@ -138,7 +138,12 @@ export const ClientFormModal: React.FC<ClientFormModalProps> = ({
                 type="number"
                 min="0"
                 value={defaultClientRate}
-                onChange={(e) => setDefaultClientRate(Number(e.target.value))}
+                onChange={(e) => setDefaultClientRate(e.target.value)}
+                onBlur={() => {
+                  if (defaultClientRate === '') {
+                    setDefaultClientRate(0);
+                  }
+                }}
                 className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
               />
             </div>

@@ -63,7 +63,7 @@ export const EditorDetailModal: React.FC<EditorDetailModalProps> = ({
     const assignedEditorId = p.assignedTo || (p as any).editorId || (p as any).assignedEditorId;
     return Boolean(assignedEditorId && assignedEditorId === editor.id);
   });
-  const payments = editorPayments.filter((p) => p.editorId === editor.id);
+  const payments = editorPayments.filter((p) => p.editorId === editor.id || (p as any).editor_id === editor.id);
   const editorActivities = activities.filter((a) => a.editorId === editor.id);
 
   const handleOpenReceipt = (pay: typeof payments[0]) => {
@@ -285,8 +285,8 @@ export const EditorDetailModal: React.FC<EditorDetailModalProps> = ({
           {activeTab === 'payments' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-500">
-                  Total Paid: ₹{stats.totalPaid.toLocaleString()} | Remaining: ₹{stats.remaining.toLocaleString()}
+                <span className="text-xs font-semibold text-slate-600">
+                  Total Amount: ₹{stats.totalCost.toLocaleString('en-IN')} | Total Paid: ₹{stats.totalPaid.toLocaleString('en-IN')} | Remaining: ₹{stats.remaining.toLocaleString('en-IN')}
                 </span>
                 <button
                   onClick={() => onAddPaymentForEditor(editor.id)}

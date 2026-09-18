@@ -18,17 +18,17 @@ import {
   ChevronRight,
   Activity as ActivityIcon,
   RotateCcw,
-  Sparkles,
+  Trash2,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
 import { WorkProject, Activity } from '../../types';
+import { ExecutionTrendsChart } from './ExecutionTrendsChart';
 
 interface DashboardProps {
   onOpenWork: (id: string) => void;
   onOpenClient: (id: string) => void;
   onOpenEditor: (id: string) => void;
   onOpenEditLink: (workId: string) => void;
-  onOpenGeminiChat?: () => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -36,7 +36,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenClient,
   onOpenEditor,
   onOpenEditLink,
-  onOpenGeminiChat,
 }) => {
   const {
     clients,
@@ -46,6 +45,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     editorPayments,
     expenses,
     activities,
+    clearActivities,
     getFinancialPulse,
     getClientStats,
     getEditorStats,
@@ -53,11 +53,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const financial = getFinancialPulse();
 
-  // Graph tab state
-  const [chartMetric, setChartMetric] = useState<'revenue' | 'payments' | 'profit' | 'completion'>('revenue');
-
   // Activity filter state
   const [activityFilterPeriod, setActivityFilterPeriod] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearingActivities, setIsClearingActivities] = useState(false);
   const [activityCustomStart, setActivityCustomStart] = useState('');
   const [activityCustomEnd, setActivityCustomEnd] = useState('');
   const [activityTypeFilter, setActivityTypeFilter] = useState('all');
@@ -221,19 +220,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </p>
         </div>
         <div className="flex items-center space-x-2.5">
-          {onOpenGeminiChat && (
-            <button
-              id="dashboard-open-gemini-chat-btn"
-              type="button"
-              onClick={onOpenGeminiChat}
-              className="flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer"
-              title="Open Gemini AI Chatbot"
-            >
-              <Sparkles className="w-4 h-4 text-amber-300" />
-              <span>Ask Gemini</span>
-            </button>
-          )}
-
           <span className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-semibold border border-emerald-200">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             Live Sync Active
@@ -683,146 +669,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </section>
 
       {/* ========================================================
-          4. FINANCIAL GRAPHS & MONTHLY TRENDS
+          4. FINANCIAL GRAPHS & MONTHLY TRENDS: EXECUTION VELOCITY & REVENUE TRENDS
          ======================================================== */}
-      <section className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <h4 className="font-bold text-slate-800 text-sm">Execution Velocity &amp; Revenue Trends</h4>
-              <span className="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-100 uppercase font-bold tracking-widest">
-                Quarterly View
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 mt-1">
-              Visual velocity metrics across Revenue, Payments, Profit &amp; Work Completion
-            </p>
-          </div>
-          {/* Chart Switcher */}
-          <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-lg">
-            {(['revenue', 'payments', 'profit', 'completion'] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => setChartMetric(mode)}
-                className={`px-3 py-1 rounded-md text-xs font-semibold capitalize transition ${
-                  chartMetric === mode
-                    ? 'bg-white text-indigo-700 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {mode}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Clean SVG Interactive Trend Visualizer */}
-        <div className="h-64 w-full bg-slate-50/50 rounded-xl p-4 border border-slate-200/80 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <span className="font-medium text-slate-700">
-              {chartMetric === 'revenue' && 'Total Billed Work Revenue (August – September 2026)'}
-              {chartMetric === 'payments' && 'Client Collected Payments vs Pending Balance'}
-              {chartMetric === 'profit' && 'Gross & Net Profit Dynamics'}
-              {chartMetric === 'completion' && 'Work Delivered & Completed Ratio'}
-            </span>
-            <span className="text-[10px] bg-slate-200/70 px-2 py-0.5 rounded text-slate-600 font-mono uppercase font-semibold">
-              Monthly Aggregation
-            </span>
-          </div>
-
-          {/* SVG Line / Bar Chart representation */}
-          <div className="flex-1 my-2 flex items-end justify-between gap-4 px-4 pt-4 pb-2 border-b border-slate-200">
-            {/* Week 1 */}
-            <div className="flex-1 flex flex-col items-center gap-2 group">
-              <div
-                className="w-full max-w-[40px] bg-indigo-200 group-hover:bg-indigo-300 rounded-t transition-all"
-                style={{
-                  height:
-                    chartMetric === 'revenue' ? '55%' :
-                    chartMetric === 'payments' ? '40%' :
-                    chartMetric === 'profit' ? '50%' : '60%',
-                }}
-              />
-              <span className="text-[10px] text-slate-400 font-medium">W1 Aug</span>
-            </div>
-
-            {/* Week 2 */}
-            <div className="flex-1 flex flex-col items-center gap-2 group">
-              <div
-                className="w-full max-w-[40px] bg-indigo-300 group-hover:bg-indigo-400 rounded-t transition-all"
-                style={{
-                  height:
-                    chartMetric === 'revenue' ? '70%' :
-                    chartMetric === 'payments' ? '65%' :
-                    chartMetric === 'profit' ? '68%' : '75%',
-                }}
-              />
-              <span className="text-[10px] text-slate-400 font-medium">W2 Aug</span>
-            </div>
-
-            {/* Week 3 */}
-            <div className="flex-1 flex flex-col items-center gap-2 group">
-              <div
-                className="w-full max-w-[40px] bg-indigo-400 group-hover:bg-indigo-500 rounded-t transition-all"
-                style={{
-                  height:
-                    chartMetric === 'revenue' ? '60%' :
-                    chartMetric === 'payments' ? '50%' :
-                    chartMetric === 'profit' ? '55%' : '80%',
-                }}
-              />
-              <span className="text-[10px] text-slate-400 font-medium">W3 Aug</span>
-            </div>
-
-            {/* Week 4 */}
-            <div className="flex-1 flex flex-col items-center gap-2 group">
-              <div
-                className="w-full max-w-[40px] bg-indigo-500 group-hover:bg-indigo-600 rounded-t transition-all"
-                style={{
-                  height:
-                    chartMetric === 'revenue' ? '85%' :
-                    chartMetric === 'payments' ? '78%' :
-                    chartMetric === 'profit' ? '80%' : '90%',
-                }}
-              />
-              <span className="text-[10px] text-slate-400 font-medium">W4 Aug</span>
-            </div>
-
-            {/* Current Week (Sep) */}
-            <div className="flex-1 flex flex-col items-center gap-2 group">
-              <div
-                className="w-full max-w-[40px] bg-indigo-600 group-hover:bg-indigo-700 rounded-t transition-all relative"
-                style={{
-                  height:
-                    chartMetric === 'revenue' ? '95%' :
-                    chartMetric === 'payments' ? '88%' :
-                    chartMetric === 'profit' ? '92%' : '85%',
-                }}
-              >
-                <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] px-1.5 py-0.5 rounded font-bold whitespace-nowrap">
-                  Current
-                </div>
-              </div>
-              <span className="text-[10px] font-bold text-indigo-700">W1 Sep</span>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between text-xs text-slate-600 pt-1">
-            <span>
-              Peak Value:{' '}
-              <strong className="text-slate-900">
-                {chartMetric === 'revenue' && `₹${(financial?.totalRevenue || 0).toLocaleString()}`}
-                {chartMetric === 'payments' && `₹${(financial?.totalPaymentsReceived || 0).toLocaleString()}`}
-                {chartMetric === 'profit' && `₹${(financial?.netProfit || 0).toLocaleString()}`}
-                {chartMetric === 'completion' && `${completedWork} Finished Projects`}
-              </strong>
-            </span>
-            <span className="text-emerald-600 font-semibold flex items-center gap-0.5">
-              <ArrowUpRight className="w-3.5 h-3.5" /> +24% growth vs previous period
-            </span>
-          </div>
-        </div>
-      </section>
+      <ExecutionTrendsChart
+        financial={financial}
+        completedWork={completedWork}
+        totalWork={projects.length}
+      />
 
       {/* ========================================================
           5. CLIENT RANKINGS & EDITOR RANKINGS
@@ -1041,6 +894,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
             >
               Custom Range
             </button>
+
+            <div className="h-4 w-px bg-slate-200 mx-1 hidden sm:block" />
+
+            {/* Clear Activities Button */}
+            <button
+              id="btn-clear-activities"
+              type="button"
+              onClick={() => setShowClearConfirm(true)}
+              disabled={activities.length === 0}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition cursor-pointer ${
+                activities.length === 0
+                  ? 'opacity-40 cursor-not-allowed text-slate-400 bg-slate-100'
+                  : 'text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200/60 shadow-2xs hover:shadow-xs'
+              }`}
+              title="Clear all activity and audit trail records"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Clear Activities</span>
+            </button>
           </div>
         </div>
 
@@ -1165,18 +1037,65 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </section>
 
-      {/* Floating Gemini Chat Trigger Button */}
-      {onOpenGeminiChat && (
-        <button
-          id="dashboard-floating-gemini-btn"
-          type="button"
-          onClick={onOpenGeminiChat}
-          className="fixed bottom-6 right-6 z-40 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white p-3.5 rounded-full shadow-lg shadow-indigo-600/30 flex items-center gap-2.5 transition hover:scale-105 cursor-pointer"
-          title="Ask Gemini CRM AI"
+      {/* Confirmation Dialog for Clearing Activities */}
+      {showClearConfirm && (
+        <div
+          id="modal-clear-activities-confirm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-200"
         >
-          <Sparkles className="w-5 h-5 text-amber-300" />
-          <span className="text-xs font-bold pr-1">Ask Gemini</span>
-        </button>
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full border border-slate-200 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-slate-900 text-base">Clear all activity logs?</h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  This action will permanently remove all {activities.length} activity trail records. Your Clients, Editors, Works, Payments, and Expenses will NOT be affected.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                id="btn-cancel-clear-activities"
+                disabled={isClearingActivities}
+                onClick={() => setShowClearConfirm(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-clear-activities"
+                disabled={isClearingActivities}
+                onClick={async () => {
+                  setIsClearingActivities(true);
+                  try {
+                    await clearActivities();
+                  } finally {
+                    setIsClearingActivities(false);
+                    setShowClearConfirm(false);
+                  }
+                }}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition shadow-xs cursor-pointer disabled:opacity-50"
+              >
+                {isClearingActivities ? (
+                  <>
+                    <RotateCcw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Clearing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear Activities</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
