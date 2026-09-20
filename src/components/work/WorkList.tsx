@@ -47,7 +47,7 @@ export const WorkList: React.FC<WorkListProps> = ({
   onEditLinks,
   onOpenClientDetail,
 }) => {
-  const { projects, clients, editors, deleteProject, settings, runDueRemindersCheck } = useCrm();
+  const { projects, clients, editors, deleteProject, settings, runDueRemindersCheck, getWorkPaymentStats } = useCrm();
 
   const [viewMode, setViewMode] = useState<'table' | 'kanban' | 'calendar'>('table');
   const [search, setSearch] = useState('');
@@ -726,6 +726,7 @@ export const WorkList: React.FC<WorkListProps> = ({
                                     const pEditorId = p.assignedTo || p.editorId || (p as any).assignedEditorId;
                                     const editor = editors.find((e) => e.id === pEditorId);
                                     const displayDate = formatWorkDate(p.workGivenDate, p.createdAt);
+                                    const pStats = getWorkPaymentStats(p.id);
 
                                     return (
                                       <div
@@ -768,6 +769,12 @@ export const WorkList: React.FC<WorkListProps> = ({
                                             <span>Rate: ₹{(p.clientRate || 0).toLocaleString()}</span>
                                             <span className="font-bold text-slate-800">
                                               Total: ₹{(p.totalBilling || 0).toLocaleString()}
+                                            </span>
+                                            <span className="text-emerald-700 font-semibold">
+                                              Paid: ₹{pStats.paymentReceived.toLocaleString('en-IN')}
+                                            </span>
+                                            <span className={pStats.remainingAmount > 0 ? 'text-amber-700 font-semibold' : 'text-slate-600'}>
+                                              Remaining: ₹{pStats.remainingAmount.toLocaleString('en-IN')}
                                             </span>
                                             <span>
                                               Assigned:{' '}

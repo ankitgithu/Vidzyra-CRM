@@ -39,7 +39,7 @@ export const ClientWorkDetailModal: React.FC<ClientWorkDetailModalProps> = ({
   onEditWork,
   onEditLinks,
 }) => {
-  const { clients, projects, editors, getClientStats, deleteProject, settings } = useCrm();
+  const { clients, projects, editors, getClientStats, getWorkPaymentStats, deleteProject, settings } = useCrm();
   const [projectToDelete, setProjectToDelete] = useState<WorkProject | null>(null);
 
   const client = useMemo(() => {
@@ -224,6 +224,7 @@ export const ClientWorkDetailModal: React.FC<ClientWorkDetailModalProps> = ({
                 const editor = assignedEditorId ? editors.find((e) => e.id === assignedEditorId) : null;
                 const driveFolderUrl = getProjectDriveFolderUrl(work);
                 const displayDate = formatWorkDate(work.workGivenDate, work.createdAt);
+                const workStats = getWorkPaymentStats(work.id);
 
                 return (
                   <div
@@ -259,6 +260,26 @@ export const ClientWorkDetailModal: React.FC<ClientWorkDetailModalProps> = ({
                       >
                         Status: {work.status}
                       </span>
+                    </div>
+
+                    {/* Work Payment Summary (Compact per deliverable) */}
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 flex items-center justify-between text-xs flex-wrap gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-slate-500 font-medium">Total:</span>
+                        <span className="font-bold text-slate-900">₹{workStats.totalAmount.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-emerald-700 font-medium">Paid:</span>
+                        <span className="font-bold text-emerald-700">₹{workStats.paymentReceived.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className={workStats.remainingAmount > 0 ? "text-amber-700 font-medium" : "text-slate-500 font-medium"}>
+                          Remaining:
+                        </span>
+                        <span className={`font-bold ${workStats.remainingAmount > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
+                          ₹{workStats.remainingAmount.toLocaleString('en-IN')}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Metadata Details Grid */}

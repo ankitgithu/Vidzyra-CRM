@@ -224,6 +224,13 @@ export interface CrmContextType {
     paymentStatus: 'Paid' | 'Partial' | 'Pending';
   };
 
+  getWorkPaymentStats: (workId: string) => {
+    totalAmount: number;
+    paymentReceived: number;
+    remainingAmount: number;
+    payments: ClientPayment[];
+  };
+
   getEditorStats: (editorId: string) => {
     assignedWork: number;
     inProgress: number;
@@ -2504,7 +2511,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const client = clients.find((c) => c.id === clientId);
     const projectBilling = clientProjects.reduce((acc, p) => acc + (p.totalBilling || 0), 0);
-    const totalBilling = projectBilling > 0 ? projectBilling : (client?.defaultClientRate || 0);
+    const totalBilling = clientProjects.length > 0 ? projectBilling : (client?.defaultClientRate || 0);
     const clientPays = clientPayments.filter((p) => p.clientId === clientId || (p as any).client_id === clientId);
     const totalPaid = clientPays.reduce((acc, p) => acc + (p.amount || 0), 0);
     const remaining = Math.max(0, totalBilling - totalPaid);
@@ -2562,6 +2569,28 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       paymentStatus,
     };
   };
+
+  const getWorkPaymentStats = useCallback(
+    (workId: string) => {
+      const project = projects.find((p) => p.id === workId);
+      const totalAmount = project
+        ? (project.totalBilling ?? ((project.quantity || 1) * (project.clientRate || 0)))
+        : 0;
+      const workPayments = clientPayments
+        .filter((p) => p.workId === workId || (p as any).work_id === workId)
+        .sort((a, b) => new Date(b.date || b.paymentDate || 0).getTime() - new Date(a.date || a.paymentDate || 0).getTime());
+      const paymentReceived = workPayments.reduce((acc, p) => acc + (p.amount || 0), 0);
+      const remainingAmount = Math.max(0, totalAmount - paymentReceived);
+
+      return {
+        totalAmount,
+        paymentReceived,
+        remainingAmount,
+        payments: workPayments,
+      };
+    },
+    [projects, clientPayments]
+  );
 
   // ------------------------------------------
   // Feature: Ratings System
@@ -3019,6 +3048,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getFinancialPulse,
         financialMetrics,
         getClientStats,
+        getWorkPaymentStats,
         getEditorStats,
         addRating,
         createInvoice,

@@ -23,6 +23,7 @@ interface PaymentFormModalProps {
   onClose: () => void;
   defaultRecipientType?: 'Client' | 'Editor' | 'Expense';
   defaultRecipientId?: string | null;
+  defaultWorkId?: string | null;
   paymentToEdit?: ClientPayment | EditorPayment | null;
   editCategory?: 'Client' | 'Editor' | null;
   onPaymentSaved?: (payment: ClientPayment | EditorPayment, category: 'Client' | 'Editor') => void;
@@ -33,6 +34,7 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
   onClose,
   defaultRecipientType = 'Client',
   defaultRecipientId,
+  defaultWorkId,
   paymentToEdit,
   editCategory,
   onPaymentSaved,
@@ -103,9 +105,19 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
     } else {
       setPaymentCategory(defaultRecipientType);
       if (defaultRecipientType === 'Client') {
-        setClientId(defaultRecipientId || clients[0]?.id || '');
+        if (defaultWorkId) {
+          const pr = projects.find((p) => p.id === defaultWorkId);
+          setClientId(pr ? (pr.clientId || (pr as any).client_id || defaultRecipientId || '') : (defaultRecipientId || clients[0]?.id || ''));
+          setWorkId(defaultWorkId);
+        } else {
+          setClientId(defaultRecipientId || clients[0]?.id || '');
+          setWorkId('');
+        }
       } else if (defaultRecipientType === 'Editor') {
         setEditorId(defaultRecipientId || editors[0]?.id || '');
+        setWorkId(defaultWorkId || '');
+      } else {
+        setWorkId('');
       }
       setAmount('');
       setDate(new Date().toISOString().split('T')[0]);
@@ -113,12 +125,11 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
       setPaymentMethod('Bank Transfer');
       setReferenceNumber('');
       setNotes('');
-      setWorkId('');
       setSelectedExpenseId('new');
       setExpenseTitle('');
       setExpenseTotalBill('');
     }
-  }, [isOpen, paymentToEdit, editCategory, defaultRecipientType, defaultRecipientId, clients, editors]);
+  }, [isOpen, paymentToEdit, editCategory, defaultRecipientType, defaultRecipientId, defaultWorkId, clients, editors, projects]);
 
   // When selected existing expense changes in Expense mode
   useEffect(() => {
@@ -141,6 +152,35 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
   const paymentSummary = useMemo(() => {
     if (paymentCategory === 'Client') {
       const selectedClient = clients.find((c) => c.id === clientId);
+
+      if (workId) {
+        const selectedProject = projects.find((p) => p.id === workId);
+        const workTotal = selectedProject
+          ? (selectedProject.totalBilling ?? ((selectedProject.quantity || 1) * (selectedProject.clientRate || 0)))
+          : 0;
+        const workPays = clientPayments.filter(
+          (p) =>
+            (p.workId === workId || (p as any).work_id === workId) &&
+            (!isEditing || p.id !== paymentToEdit?.id)
+        );
+        const basePaid = workPays.reduce((acc, p) => acc + (p.amount || 0), 0);
+        const initialRemaining = Math.max(0, workTotal - basePaid);
+        const calculatedTotalPaid = basePaid + enteredAmount;
+        const calculatedRemaining = Math.max(0, workTotal - calculatedTotalPaid);
+        const isOverpaying = workTotal > 0 && enteredAmount > initialRemaining;
+
+        return {
+          entityName: `${selectedClient?.name || 'Client'} • ${selectedProject?.name || 'Work'}`,
+          totalAmount: workTotal,
+          basePaid,
+          initialRemaining,
+          calculatedTotalPaid,
+          calculatedRemaining,
+          isOverpaying,
+          isWorkSpecific: true,
+        };
+      }
+
       const stats = clientId ? getClientStats(clientId) : { totalBilling: 0, totalPaid: 0, remaining: 0 };
 
       const totalAmount = stats.totalBilling;
@@ -161,6 +201,7 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
         calculatedTotalPaid,
         calculatedRemaining,
         isOverpaying,
+        isWorkSpecific: false,
       };
     }
 
@@ -650,7 +691,9 @@ export const PaymentFormModal: React.FC<PaymentFormModalProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">
                 {paymentCategory === 'Client'
-                  ? 'Client Payment Summary'
+                  ? (paymentSummary as any).isWorkSpecific
+                    ? 'Work Payment Summary'
+                    : 'Client Payment Summary'
                   : paymentCategory === 'Editor'
                   ? 'Editor Payment Summary'
                   : 'Expense Payment Summary'}
