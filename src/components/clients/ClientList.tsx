@@ -16,9 +16,11 @@ import {
   AlertTriangle,
   CheckCircle2,
   X,
+  MessageSquare,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
 import { Client, ClientType, PortalStatus } from '../../types';
+import { QuickMessageModal } from './QuickMessageModal';
 
 interface ClientListProps {
   onOpenClientDetail: (clientId: string) => void;
@@ -45,6 +47,18 @@ export const ClientList: React.FC<ClientListProps> = ({
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'Paid' | 'Partial' | 'Pending'>('all');
   const [portalFilter, setPortalFilter] = useState<'all' | PortalStatus>('all');
   const [deleteConfirmClient, setDeleteConfirmClient] = useState<Client | null>(null);
+  const [quickMessageTarget, setQuickMessageTarget] = useState<{
+    client: Client;
+    stats: {
+      totalWork: number;
+      completed: number;
+      pending: number;
+      totalBilling: number;
+      totalPaid: number;
+      remaining: number;
+      paymentStatus: 'Paid' | 'Partial' | 'Pending';
+    };
+  } | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -288,6 +302,16 @@ export const ClientList: React.FC<ClientListProps> = ({
 
                     {/* Actions */}
                     <td className="px-4 py-3.5 text-right whitespace-nowrap space-x-1">
+                      {/* Quick Message Button */}
+                      <button
+                        id={`btn-quick-message-${client.id}`}
+                        onClick={() => setQuickMessageTarget({ client, stats })}
+                        className="p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded transition"
+                        title="Quick Message"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                      </button>
+
                       {/* Share Button */}
                       <button
                         id={`btn-share-client-${client.id}`}
@@ -332,6 +356,15 @@ export const ClientList: React.FC<ClientListProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Quick Message Modal */}
+      {quickMessageTarget && (
+        <QuickMessageModal
+          client={quickMessageTarget.client}
+          stats={quickMessageTarget.stats}
+          onClose={() => setQuickMessageTarget(null)}
+        />
+      )}
 
       {/* Delete Client Confirmation Modal */}
       {deleteConfirmClient && (
