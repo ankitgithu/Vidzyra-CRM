@@ -28,6 +28,7 @@ import { AdminLogin } from './components/auth/AdminLogin';
 import { Client, Editor, WorkProject } from './types';
 import { AlertCircle } from 'lucide-react';
 import { getSharedPortalSession } from './utils/portalAuth';
+import { FloatingCalculator } from './components/common/FloatingCalculator';
 
 const MainApp: React.FC = () => {
   const {
@@ -134,20 +135,26 @@ const MainApp: React.FC = () => {
   if (activePortalUser) {
     if (activePortalUser.type === 'client') {
       return (
-        <ClientPortalView
-          clientId={activePortalUser.id}
-          onExit={() => setActivePortalUser(null)}
-          isSharedPortal={false}
-        />
+        <>
+          <ClientPortalView
+            clientId={activePortalUser.id}
+            onExit={() => setActivePortalUser(null)}
+            isSharedPortal={false}
+          />
+          <FloatingCalculator />
+        </>
       );
     }
     if (activePortalUser.type === 'editor') {
       return (
-        <EditorPortalView
-          editorId={activePortalUser.id}
-          onExit={() => setActivePortalUser(null)}
-          isSharedPortal={false}
-        />
+        <>
+          <EditorPortalView
+            editorId={activePortalUser.id}
+            onExit={() => setActivePortalUser(null)}
+            isSharedPortal={false}
+          />
+          <FloatingCalculator />
+        </>
       );
     }
   }
@@ -388,6 +395,9 @@ const MainApp: React.FC = () => {
           entityId={sharePortalData.id}
         />
       )}
+
+      {/* Global Floating Calculator Toggle */}
+      <FloatingCalculator />
     </div>
   );
 };
