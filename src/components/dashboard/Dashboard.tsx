@@ -23,6 +23,7 @@ import {
 import { useCrm } from '../../context/CrmContext';
 import { WorkProject, Activity } from '../../types';
 import { ExecutionTrendsChart } from './ExecutionTrendsChart';
+import { formatINR } from '../../utils/currencyUtils';
 
 interface DashboardProps {
   onOpenWork: (id: string) => void;
@@ -49,9 +50,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
     getFinancialPulse,
     getClientStats,
     getEditorStats,
+    getPersonalExpenseStats,
+    setActiveTab,
   } = useCrm();
 
   const financial = getFinancialPulse();
+  const personalStats = getPersonalExpenseStats();
 
   // Activity filter state
   const [activityFilterPeriod, setActivityFilterPeriod] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
@@ -357,6 +361,55 @@ export const Dashboard: React.FC<DashboardProps> = ({
               ₹{(financial?.netProfit || 0).toLocaleString()}
             </h3>
             <p className="text-[11px] text-slate-400 mt-2 font-medium">Realized net margin</p>
+          </div>
+        </div>
+
+        {/* Personal Expenses Dashboard Card */}
+        <div
+          id="card-dashboard-personal-expenses"
+          onClick={() => setActiveTab('personal-expenses')}
+          className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs hover:border-indigo-300 transition cursor-pointer group"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-700 shrink-0 group-hover:scale-105 transition">
+                <Wallet className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Personal Expenses
+                </p>
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <h3 className="text-2xl font-bold text-slate-900 tracking-tight">
+                    {formatINR(personalStats.thisMonth)}
+                  </h3>
+                  <span className="text-xs font-semibold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-100">
+                    This Month
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 sm:gap-6 border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-100">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Today</span>
+                <span className="text-sm font-bold text-slate-800">{formatINR(personalStats.today)}</span>
+              </div>
+              <div className="h-7 w-px bg-slate-200" />
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">This Month</span>
+                <span className="text-sm font-bold text-purple-700">{formatINR(personalStats.thisMonth)}</span>
+              </div>
+              <div className="h-7 w-px bg-slate-200" />
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Overall Total</span>
+                <span className="text-sm font-bold text-slate-900">{formatINR(personalStats.overallTotal)}</span>
+              </div>
+              <div className="hidden md:flex items-center text-xs font-semibold text-indigo-600 group-hover:translate-x-0.5 transition gap-1">
+                <span>Manage</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </div>
+            </div>
           </div>
         </div>
       </section>

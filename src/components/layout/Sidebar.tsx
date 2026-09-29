@@ -13,6 +13,7 @@ import {
   ExternalLink,
   Sparkles,
   LogOut,
+  Wallet,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
 import { AdminProfileModal } from '../auth/AdminProfileModal';
@@ -28,6 +29,7 @@ export const Sidebar: React.FC = () => {
     { id: 'editors', label: 'Editors', icon: Film },
     { id: 'work', label: 'Work / Projects', icon: Briefcase },
     { id: 'payments', label: 'Payments', icon: CreditCard },
+    { id: 'personal-expenses', label: 'Personal Expense', icon: Wallet },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
     { id: 'calendar', label: 'Calendar', icon: CalendarIcon },
     { id: 'datacenter', label: 'Data Center', icon: Database },

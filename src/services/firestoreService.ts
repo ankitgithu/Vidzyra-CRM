@@ -18,6 +18,7 @@ import {
   ClientPayment,
   EditorPayment,
   Expense,
+  PersonalExpense,
   Activity,
   NotificationItem,
   BusinessSettings,
@@ -47,6 +48,7 @@ export const COLLECTIONS = {
   ADMIN_USERS: 'adminUsers',
   BACKUP_HISTORY: 'backupHistory',
   CALENDAR_TASKS: 'calendarTasks',
+  PERSONAL_EXPENSES: 'personalExpenses',
 } as const;
 
 // ==========================================
@@ -306,6 +308,35 @@ export function subscribeExpenses(
     },
     (err) => {
       handleFirestoreError(err, OperationType.LIST, COLLECTIONS.EXPENSES);
+      if (onError) onError(err);
+    }
+  );
+}
+
+export function subscribePersonalExpenses(
+  onData: (expenses: PersonalExpense[]) => void,
+  onError?: (err: unknown) => void
+): Unsubscribe {
+  const colRef = collection(db, COLLECTIONS.PERSONAL_EXPENSES);
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const items: PersonalExpense[] = [];
+      snapshot.forEach((docSnap) => {
+        const raw = docSnap.data();
+        items.push({
+          ...(raw as PersonalExpense),
+          id: docSnap.id,
+          amount: Number(raw.amount) || 0,
+          date: safeDateString(raw.date) || new Date().toISOString().split('T')[0],
+          createdAt: safeDateString(raw.createdAt) || new Date().toISOString(),
+        });
+      });
+      items.sort((a, b) => safeSortDesc(a.date || a.createdAt, b.date || b.createdAt));
+      onData(items);
+    },
+    (err) => {
+      handleFirestoreError(err, OperationType.LIST, COLLECTIONS.PERSONAL_EXPENSES);
       if (onError) onError(err);
     }
   );
@@ -710,6 +741,39 @@ export async function deleteExpenseDoc(id: string): Promise<void> {
     await deleteDoc(docRef);
   } catch (err) {
     handleFirestoreError(err, OperationType.DELETE, `${COLLECTIONS.EXPENSES}/${id}`);
+    throw err;
+  }
+}
+
+export async function createPersonalExpenseDoc(expense: PersonalExpense): Promise<void> {
+  try {
+    const docRef = doc(db, COLLECTIONS.PERSONAL_EXPENSES, expense.id);
+    await setDoc(docRef, cleanFirestoreData(expense), { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, `${COLLECTIONS.PERSONAL_EXPENSES}/${expense.id}`);
+    throw err;
+  }
+}
+
+export async function updatePersonalExpenseDoc(id: string, updates: Partial<PersonalExpense>): Promise<void> {
+  try {
+    const docRef = doc(db, COLLECTIONS.PERSONAL_EXPENSES, id);
+    await updateDoc(docRef, cleanFirestoreData({
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    }));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `${COLLECTIONS.PERSONAL_EXPENSES}/${id}`);
+    throw err;
+  }
+}
+
+export async function deletePersonalExpenseDoc(id: string): Promise<void> {
+  try {
+    const docRef = doc(db, COLLECTIONS.PERSONAL_EXPENSES, id);
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `${COLLECTIONS.PERSONAL_EXPENSES}/${id}`);
     throw err;
   }
 }

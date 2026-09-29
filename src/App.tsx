@@ -20,6 +20,7 @@ import { Reports } from './components/reports/Reports';
 import { CalendarMain } from './components/calendar/CalendarMain';
 import { DataCenter } from './components/datacenter/DataCenter';
 import { Settings } from './components/settings/Settings';
+import { PersonalExpenseView } from './components/personalExpense/PersonalExpenseView';
 import { ClientPortalView } from './components/portal/ClientPortalView';
 import { EditorPortalView } from './components/portal/EditorPortalView';
 import { EditLinkModal } from './components/modals/EditLinkModal';
@@ -280,6 +281,8 @@ const MainApp: React.FC = () => {
           {activeTab === 'payments' && (
             <PaymentList onOpenNewPayment={handleOpenNewPayment} />
           )}
+
+          {activeTab === 'personal-expenses' && <PersonalExpenseView />}
 
           {activeTab === 'reports' && <Reports />}
 

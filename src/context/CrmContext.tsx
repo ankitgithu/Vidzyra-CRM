@@ -6,6 +6,7 @@ import {
   ClientPayment,
   EditorPayment,
   Expense,
+  PersonalExpense,
   Activity,
   NotificationItem,
   BusinessSettings,
@@ -151,6 +152,18 @@ export interface CrmContextType {
   updateExpense: (id: string, updates: Partial<Expense>) => Expense | null;
   deleteExpense: (id: string) => void;
 
+  // Personal Expenses (Dedicated Personal Module)
+  personalExpenses: PersonalExpense[];
+  addPersonalExpense: (expenseData: Omit<PersonalExpense, 'id' | 'createdAt'>) => Promise<PersonalExpense>;
+  updatePersonalExpense: (id: string, updates: Partial<PersonalExpense>) => Promise<void>;
+  deletePersonalExpense: (id: string) => Promise<void>;
+  getPersonalExpenseStats: () => {
+    today: number;
+    thisMonth: number;
+    overallTotal: number;
+    count: number;
+  };
+
   // Notifications & Activities
   addNotification: (notif: Omit<NotificationItem, 'id' | 'date' | 'time' | 'timestamp' | 'read'> & { id?: string }) => NotificationItem;
   addNotifications: (items: (Omit<NotificationItem, 'id' | 'date' | 'time' | 'timestamp' | 'read'> & { id?: string })[]) => void;
@@ -286,6 +299,8 @@ export const ROUTE_TO_TAB: Record<string, string> = {
   '/data': 'datacenter',
   '/datacenter': 'datacenter',
   '/settings': 'settings',
+  '/personal-expenses': 'personal-expenses',
+  '/personal-expense': 'personal-expenses',
 };
 
 export const TAB_TO_ROUTE: Record<string, string> = {
@@ -298,6 +313,7 @@ export const TAB_TO_ROUTE: Record<string, string> = {
   calendar: '/calendar',
   datacenter: '/data',
   settings: '/settings',
+  'personal-expenses': '/personal-expenses',
 };
 
 export function getInitialWorkId(): string | null {
@@ -353,7 +369,7 @@ export function getInitialTab(): string {
     const savedTab = localStorage.getItem('vidzyra_crm_active_tab');
     if (
       savedTab &&
-      ['dashboard', 'clients', 'editors', 'work', 'payments', 'reports', 'datacenter', 'settings'].includes(savedTab)
+      ['dashboard', 'clients', 'editors', 'work', 'payments', 'reports', 'datacenter', 'settings', 'personal-expenses'].includes(savedTab)
     ) {
       return savedTab;
     }
@@ -379,6 +395,14 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [calendarTasks, setCalendarTasks] = useState<CalendarTask[]>([]);
+  const [personalExpenses, setPersonalExpenses] = useState<PersonalExpense[]>(() => {
+    try {
+      const saved = localStorage.getItem('vidzyra_crm_personal_expenses');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Firestore status
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -659,6 +683,24 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
 
+    const unsubPersonalExpenses = firestoreService.subscribePersonalExpenses(
+      (data) => {
+        if (active) {
+          if (data && data.length > 0) {
+            setPersonalExpenses(data);
+            try {
+              localStorage.setItem('vidzyra_crm_personal_expenses', JSON.stringify(data));
+            } catch {
+              // ignore
+            }
+          }
+        }
+      },
+      (err) => {
+        console.warn('Personal expenses sync notice:', err);
+      }
+    );
+
     // Timeout safety fallback: don't block user interface indefinitely
     const timeout = setTimeout(() => {
       if (active && isLoading) {
@@ -682,6 +724,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubInvoices();
       unsubReceipts();
       unsubCalendarTasks();
+      unsubPersonalExpenses();
     };
   }, []);
 
@@ -2351,6 +2394,118 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // ==========================================
+  // PERSONAL EXPENSE OPERATIONS
+  // ==========================================
+  const addPersonalExpense = async (expenseData: Omit<PersonalExpense, 'id' | 'createdAt'>): Promise<PersonalExpense> => {
+    const id = `pe-${Date.now()}`;
+    const newExpense: PersonalExpense = {
+      ...expenseData,
+      id,
+      createdAt: new Date().toISOString(),
+    };
+
+    setPersonalExpenses((prev) => {
+      const updated = [newExpense, ...prev];
+      try {
+        localStorage.setItem('vidzyra_crm_personal_expenses', JSON.stringify(updated));
+      } catch (err) {
+        console.warn('Failed saving personal expense to localStorage:', err);
+      }
+      return updated;
+    });
+
+    try {
+      await firestoreService.createPersonalExpenseDoc(newExpense);
+    } catch (err) {
+      console.warn('Firestore personal expense create fallback:', err);
+    }
+
+    addActivity({
+      who: 'Admin',
+      action: 'Personal expense recorded',
+      what: `Personal expense: "${newExpense.name}" of ₹${Number(newExpense.amount || 0).toLocaleString('en-IN')} (${newExpense.category})`,
+      entityType: 'expense',
+      entityId: id,
+    });
+
+    return newExpense;
+  };
+
+  const updatePersonalExpense = async (id: string, updates: Partial<PersonalExpense>): Promise<void> => {
+    setPersonalExpenses((prev) => {
+      const updated = prev.map((item) => (item.id === id ? { ...item, ...updates, updatedAt: new Date().toISOString() } : item));
+      try {
+        localStorage.setItem('vidzyra_crm_personal_expenses', JSON.stringify(updated));
+      } catch (err) {
+        console.warn('Failed saving personal expense to localStorage:', err);
+      }
+      return updated;
+    });
+
+    try {
+      await firestoreService.updatePersonalExpenseDoc(id, updates);
+    } catch (err) {
+      console.warn('Firestore personal expense update fallback:', err);
+    }
+  };
+
+  const deletePersonalExpense = async (id: string): Promise<void> => {
+    const target = personalExpenses.find((e) => e.id === id);
+    setPersonalExpenses((prev) => {
+      const updated = prev.filter((item) => item.id !== id);
+      try {
+        localStorage.setItem('vidzyra_crm_personal_expenses', JSON.stringify(updated));
+      } catch (err) {
+        console.warn('Failed saving personal expense to localStorage:', err);
+      }
+      return updated;
+    });
+
+    try {
+      await firestoreService.deletePersonalExpenseDoc(id);
+    } catch (err) {
+      console.warn('Firestore personal expense delete fallback:', err);
+    }
+
+    if (target) {
+      addActivity({
+        who: 'Admin',
+        action: 'Personal expense deleted',
+        what: `Deleted personal expense "${target.name}" of ₹${Number(target.amount || 0).toLocaleString('en-IN')}`,
+        entityType: 'expense',
+        entityId: id,
+      });
+    }
+  };
+
+  const getPersonalExpenseStats = () => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const currentMonthPrefix = todayStr.slice(0, 7); // YYYY-MM
+    let today = 0;
+    let thisMonth = 0;
+    let overallTotal = 0;
+
+    personalExpenses.forEach((exp) => {
+      const amt = Number(exp.amount) || 0;
+      overallTotal += amt;
+      const expDate = exp.date || '';
+      if (expDate === todayStr) {
+        today += amt;
+      }
+      if (expDate.startsWith(currentMonthPrefix)) {
+        thisMonth += amt;
+      }
+    });
+
+    return {
+      today,
+      thisMonth,
+      overallTotal,
+      count: personalExpenses.length,
+    };
+  };
+
+  // ==========================================
   // NOTIFICATION MANAGEMENT
   // ==========================================
   const markNotificationAsRead = (id: string) => {
@@ -3036,6 +3191,11 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addExpense,
         updateExpense,
         deleteExpense,
+        personalExpenses,
+        addPersonalExpense,
+        updatePersonalExpense,
+        deletePersonalExpense,
+        getPersonalExpenseStats,
         addNotification,
         addNotifications,
         markNotificationAsRead,

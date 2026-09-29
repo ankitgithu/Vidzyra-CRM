@@ -231,6 +231,37 @@ export interface Expense {
   updatedAt?: string;
 }
 
+export type PersonalExpenseCategory =
+  | 'Food'
+  | 'Travel'
+  | 'Shopping'
+  | 'Home'
+  | 'Bills'
+  | 'Work/Business'
+  | 'Entertainment'
+  | 'Health'
+  | 'Recharge'
+  | 'Other';
+
+export type PersonalExpensePaymentMode =
+  | 'Cash'
+  | 'UPI'
+  | 'Card'
+  | 'Bank'
+  | 'Other';
+
+export interface PersonalExpense {
+  id: string;
+  name: string; // Expense Name / Description
+  amount: number;
+  category: PersonalExpenseCategory;
+  date: string; // YYYY-MM-DD
+  paymentMode: PersonalExpensePaymentMode;
+  note?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export type ActivityEntityType =
   | 'client'
   | 'editor'

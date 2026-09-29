@@ -45,6 +45,13 @@ service cloud.firestore {
       allow write: if isValidId(expenseId);
     }
 
+    // Personal Expenses
+    match /personalExpenses/{expenseId} {
+      allow get: if isValidId(expenseId);
+      allow list: if true;
+      allow write: if isValidId(expenseId);
+    }
+
     // Notifications
     match /notifications/{notificationId} {
       allow get: if isValidId(notificationId);

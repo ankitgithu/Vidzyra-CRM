@@ -286,6 +286,23 @@
         "createdAt": { "type": "string", "maxLength": 100 }
       },
       "required": ["id", "backupId"]
+    },
+    "PersonalExpense": {
+      "title": "PersonalExpense",
+      "description": "Personal expense entry tracked in the CRM",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 300 },
+        "amount": { "type": "number" },
+        "category": { "type": "string", "maxLength": 100 },
+        "date": { "type": "string", "maxLength": 50 },
+        "paymentMode": { "type": "string", "maxLength": 50 },
+        "note": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "name", "amount", "category", "date", "paymentMode"]
     }
   },
   "firestore": {
@@ -308,6 +325,10 @@
     "/expenses/{expenseId}": {
       "schema": { "$ref": "#/entities/Expense" },
       "description": "Collection of operational business expenses"
+    },
+    "/personalExpenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/PersonalExpense" },
+      "description": "Collection of personal expenses"
     },
     "/notifications/{notificationId}": {
       "schema": { "$ref": "#/entities/Notification" },
