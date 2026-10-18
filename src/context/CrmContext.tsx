@@ -28,6 +28,7 @@ import { initialSettings } from '../mockData';
 import * as firestoreService from '../services/firestoreService';
 import { evaluateMessageModeration } from '../utils/chatModeration';
 import { processDueReminders } from '../utils/reminders';
+import { computeClientWorkAllocations } from '../utils/paymentAllocation';
 
 export interface CrmContextType {
   clients: Client[];
@@ -234,6 +235,7 @@ export interface CrmContextType {
     totalBilling: number;
     totalPaid: number;
     remaining: number;
+    advanceCredit?: number;
     paymentStatus: 'Paid' | 'Partial' | 'Pending';
   };
 
@@ -241,7 +243,8 @@ export interface CrmContextType {
     totalAmount: number;
     paymentReceived: number;
     remainingAmount: number;
-    payments: ClientPayment[];
+    status: 'Paid' | 'Partially Paid' | 'Pending';
+    payments: Array<ClientPayment & { allocatedAmount?: number }>;
   };
 
   getEditorStats: (editorId: string) => {
@@ -2655,39 +2658,39 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return getFinancialPulse();
   }, [projects, clientPayments, editorPayments, expenses]);
 
-  const getClientStats = (clientId: string) => {
-    const clientProjects = projects.filter((p) => {
-      const pClientId = p.clientId || (p as any).client_id || (p as any).client?.id;
-      return Boolean(pClientId && pClientId === clientId);
-    });
-    const totalWork = clientProjects.length;
-    const completed = clientProjects.filter((p) => p.status === 'Completed' || p.status === 'Delivered' || p.status === 'Approved').length;
-    const pending = totalWork - completed;
+  const getClientStats = useCallback(
+    (clientId: string) => {
+      const clientProjects = projects.filter((p) => {
+        const pClientId = p.clientId || (p as any).client_id || (p as any).client?.id;
+        return Boolean(pClientId && pClientId === clientId);
+      });
+      const totalWork = clientProjects.length;
+      const completed = clientProjects.filter(
+        (p) => p.status === 'Completed' || p.status === 'Delivered' || p.status === 'Approved'
+      ).length;
+      const pending = totalWork - completed;
 
-    const client = clients.find((c) => c.id === clientId);
-    const projectBilling = clientProjects.reduce((acc, p) => acc + (p.totalBilling || 0), 0);
-    const totalBilling = clientProjects.length > 0 ? projectBilling : (client?.defaultClientRate || 0);
-    const clientPays = clientPayments.filter((p) => p.clientId === clientId || (p as any).client_id === clientId);
-    const totalPaid = clientPays.reduce((acc, p) => acc + (p.amount || 0), 0);
-    const remaining = Math.max(0, totalBilling - totalPaid);
+      const allocation = computeClientWorkAllocations(clientId, projects, clientPayments);
+      const client = clients.find((c) => c.id === clientId);
+      const totalBilling =
+        clientProjects.length > 0 ? allocation.totalBilling : client?.defaultClientRate || 0;
+      const totalPaid = allocation.totalPaid;
+      const remaining = Math.max(0, totalBilling - totalPaid);
+      const advanceCredit = Math.max(0, totalPaid - totalBilling);
 
-    let paymentStatus: 'Paid' | 'Partial' | 'Pending' = 'Pending';
-    if (totalPaid >= totalBilling && totalBilling > 0) {
-      paymentStatus = 'Paid';
-    } else if (totalPaid > 0) {
-      paymentStatus = 'Partial';
-    }
-
-    return {
-      totalWork,
-      completed,
-      pending,
-      totalBilling,
-      totalPaid,
-      remaining,
-      paymentStatus,
-    };
-  };
+      return {
+        totalWork,
+        completed,
+        pending,
+        totalBilling,
+        totalPaid,
+        remaining,
+        advanceCredit,
+        paymentStatus: allocation.paymentStatus,
+      };
+    },
+    [projects, clients, clientPayments]
+  );
 
   const getEditorStats = (editorId: string) => {
     const editorProjects = projects.filter((p) => {
@@ -2731,17 +2734,52 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const totalAmount = project
         ? (project.totalBilling ?? ((project.quantity || 1) * (project.clientRate || 0)))
         : 0;
-      const workPayments = clientPayments
-        .filter((p) => p.workId === workId || (p as any).work_id === workId)
-        .sort((a, b) => new Date(b.date || b.paymentDate || 0).getTime() - new Date(a.date || a.paymentDate || 0).getTime());
-      const paymentReceived = workPayments.reduce((acc, p) => acc + (p.amount || 0), 0);
-      const remainingAmount = Math.max(0, totalAmount - paymentReceived);
+
+      if (!project) {
+        return {
+          totalAmount: 0,
+          paymentReceived: 0,
+          remainingAmount: 0,
+          status: 'Pending' as const,
+          payments: [] as Array<ClientPayment & { allocatedAmount?: number }>,
+        };
+      }
+
+      const pClientId = project.clientId || (project as any).client_id || (project as any).client?.id;
+      if (!pClientId) {
+        const workPayments = clientPayments
+          .filter((p) => p.workId === workId || (p as any).work_id === workId)
+          .sort((a, b) => new Date(b.date || b.paymentDate || 0).getTime() - new Date(a.date || a.paymentDate || 0).getTime());
+        const paymentReceived = workPayments.reduce((acc, p) => acc + (p.amount || 0), 0);
+        const remainingAmount = Math.max(0, totalAmount - paymentReceived);
+        let status: 'Paid' | 'Partially Paid' | 'Pending' = 'Pending';
+        if (paymentReceived >= totalAmount && totalAmount > 0) {
+          status = 'Paid';
+        } else if (paymentReceived > 0) {
+          status = 'Partially Paid';
+        }
+        return {
+          totalAmount,
+          paymentReceived,
+          remainingAmount,
+          status,
+          payments: workPayments,
+        };
+      }
+
+      const allocation = computeClientWorkAllocations(pClientId, projects, clientPayments);
+      const stats = allocation.workStatsMap[workId];
+
+      if (stats) {
+        return stats;
+      }
 
       return {
         totalAmount,
-        paymentReceived,
-        remainingAmount,
-        payments: workPayments,
+        paymentReceived: 0,
+        remainingAmount: totalAmount,
+        status: 'Pending' as const,
+        payments: [],
       };
     },
     [projects, clientPayments]

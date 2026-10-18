@@ -567,7 +567,7 @@ export const PersonalExpenseView: React.FC = () => {
             <input
               type="text"
               id="input-search-personal-expenses"
-              placeholder="Search expenses by name, category, payment mode, or note..."
+              placeholder="Search expenses..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"

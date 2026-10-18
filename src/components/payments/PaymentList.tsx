@@ -56,6 +56,7 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
     settings,
     getClientStats,
     getEditorStats,
+    getWorkPaymentStats,
     deleteClientPayment,
     deleteEditorPayment,
     deleteExpense,
@@ -138,15 +139,21 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
 
   // Calculate project or entity payment status
   const calculateClientPaymentStatus = (p: ClientPayment): PaymentStatus => {
+    if (p.allocatedWorkIds && p.allocatedWorkIds.length > 0) {
+      const allPaid = p.allocatedWorkIds.every((wId) => {
+        const stats = getWorkPaymentStats(wId);
+        return stats.status === 'Paid';
+      });
+      if (allPaid) return 'Paid';
+      const anyPaid = p.allocatedWorkIds.some((wId) => {
+        const stats = getWorkPaymentStats(wId);
+        return stats.status === 'Paid' || stats.status === 'Partially Paid';
+      });
+      return anyPaid ? 'Partial' : 'Pending';
+    }
     if (p.workId) {
-      const proj = projects.find((pr) => pr.id === p.workId);
-      if (proj) {
-        const pays = clientPayments.filter((cp) => cp.workId === proj.id);
-        const totalPaid = pays.reduce((sum, cp) => sum + cp.amount, 0);
-        if (totalPaid >= proj.totalBilling && proj.totalBilling > 0) return 'Paid';
-        if (totalPaid > 0) return 'Partial';
-        return 'Pending';
-      }
+      const stats = getWorkPaymentStats(p.workId);
+      return stats.status === 'Paid' ? 'Paid' : stats.status === 'Partially Paid' ? 'Partial' : 'Pending';
     }
     const stats = getClientStats(p.clientId);
     return stats.paymentStatus;
@@ -172,17 +179,36 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
   const clientRows = useMemo(() => {
     return clientPayments.map((p) => {
       const client = clients.find((c) => c.id === p.clientId);
-      const project = projects.find((proj) => proj.id === p.workId);
+      const allocatedProjects = p.allocatedWorkIds && p.allocatedWorkIds.length > 0
+        ? projects.filter((proj) => p.allocatedWorkIds!.includes(proj.id))
+        : p.workId
+        ? projects.filter((proj) => proj.id === p.workId)
+        : [];
+
+      let projectName = 'General / All Deliverables';
+      let settledBadges: string[] | undefined = undefined;
+
+      if (allocatedProjects.length === 1) {
+        projectName = allocatedProjects[0].name;
+      } else if (allocatedProjects.length > 1) {
+        projectName = `${allocatedProjects.length} Works Settled`;
+        settledBadges = allocatedProjects.map((ap) => {
+          const item = p.allocations?.find((a) => a.workId === ap.id);
+          return item ? `${ap.name} (₹${item.amount.toLocaleString('en-IN')})` : ap.name;
+        });
+      }
+
       const status = calculateClientPaymentStatus(p);
       return {
         ...p,
         clientName: client?.name || 'Unknown Client',
-        projectName: project?.name || 'All Deliverables / General',
+        projectName,
+        settledBadges,
         status,
         dateFormatted: p.date || p.paymentDate || 'N/A',
       };
     });
-  }, [clientPayments, clients, projects]);
+  }, [clientPayments, clients, projects, getWorkPaymentStats, getClientStats]);
 
   // Enriched Editor Rows
   const editorRows = useMemo(() => {
@@ -332,19 +358,35 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
   // Receipt Opening Handlers
   const handleOpenClientReceipt = (payment: ClientPayment) => {
     const client = clients.find((c) => c.id === payment.clientId);
-    const project = payment.workId ? projects.find((p) => p.id === payment.workId) : null;
+    const allocatedProjects = payment.allocatedWorkIds && payment.allocatedWorkIds.length > 0
+      ? projects.filter((p) => payment.allocatedWorkIds!.includes(p.id))
+      : payment.workId
+      ? projects.filter((p) => p.id === payment.workId)
+      : [];
 
     let totalAmount = 0;
     let totalPaid = 0;
     let remaining = 0;
     let status: PaymentStatus = 'Pending';
+    let projectName = 'All Associated Deliverables';
 
-    if (project) {
-      totalAmount = project.totalBilling;
-      const pays = clientPayments.filter((p) => p.workId === project.id);
-      totalPaid = pays.reduce((s, p) => s + p.amount, 0);
-      remaining = Math.max(0, totalAmount - totalPaid);
-      status = totalPaid >= totalAmount && totalAmount > 0 ? 'Paid' : totalPaid > 0 ? 'Partial' : 'Pending';
+    if (allocatedProjects.length === 1) {
+      const proj = allocatedProjects[0];
+      projectName = proj.name;
+      const wStats = getWorkPaymentStats(proj.id);
+      totalAmount = wStats.totalAmount;
+      totalPaid = wStats.paymentReceived;
+      remaining = wStats.remainingAmount;
+      status = wStats.status === 'Paid' ? 'Paid' : wStats.status === 'Partially Paid' ? 'Partial' : 'Pending';
+    } else if (allocatedProjects.length > 1) {
+      projectName = `${allocatedProjects.length} Works Settled (${allocatedProjects.map((p) => p.name).join(', ')})`;
+      if (client) {
+        const stats = getClientStats(client.id);
+        totalAmount = stats.totalBilling;
+        totalPaid = stats.totalPaid;
+        remaining = stats.remaining;
+        status = stats.paymentStatus;
+      }
     } else if (client) {
       const stats = getClientStats(client.id);
       totalAmount = stats.totalBilling;
@@ -364,7 +406,7 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
       paymentType: payment.paymentType,
       paymentMethod: payment.paymentMethod,
       referenceNumber: payment.referenceNumber || '',
-      projectName: project?.name || 'All Associated Deliverables',
+      projectName,
       totalAmount,
       totalPaid,
       remainingAmount: remaining,
@@ -883,8 +925,32 @@ export const PaymentList: React.FC<PaymentListProps> = ({ onOpenNewPayment }) =>
                       <td className="px-3 py-3.5 font-bold text-slate-900 whitespace-nowrap">
                         {row.clientName}
                       </td>
-                      <td className="px-3 py-3.5 text-slate-600 truncate max-w-xs">
-                        {row.projectName}
+                      <td className="px-3 py-3.5 text-slate-600 max-w-xs">
+                        <div className="font-semibold text-slate-800 truncate">
+                          {row.projectName}
+                        </div>
+                        {row.settledBadges && row.settledBadges.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-0.5">
+                            {row.settledBadges.slice(0, 2).map((b, idx) => (
+                              <span
+                                key={idx}
+                                className="px-1.5 py-0.2 bg-indigo-50 text-indigo-700 text-[10px] rounded font-medium truncate max-w-[140px]"
+                              >
+                                {b}
+                              </span>
+                            ))}
+                            {row.settledBadges.length > 2 && (
+                              <span className="text-[10px] text-slate-400">
+                                +{row.settledBadges.length - 2} more
+                              </span>
+                            )}
+                            {row.advanceAmount && row.advanceAmount > 0 && (
+                              <span className="px-1.5 py-0.2 bg-emerald-50 text-emerald-700 text-[10px] rounded font-medium">
+                                +₹{row.advanceAmount.toLocaleString('en-IN')} Adv.
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-3.5 text-right font-bold text-emerald-600 whitespace-nowrap">
                         ₹{(row.amount || 0).toLocaleString('en-IN')}

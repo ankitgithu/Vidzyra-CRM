@@ -22,6 +22,7 @@ import {
   ChevronDown,
   ChevronUp,
   ChevronRight,
+  FileDown,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
 import { WorkProject, ProjectStatus, WorkType, ProjectPriority, Client } from '../../types';
@@ -31,6 +32,7 @@ import { formatWorkDate, getWorkSortTime } from '../../utils/crmDateUtils';
 import { KanbanBoard } from './KanbanBoard';
 import { DeadlineCalendarView } from './DeadlineCalendarView';
 import { ClientWorkDetailModal } from './ClientWorkDetailModal';
+import { ClientWorkPdfModal } from './ClientWorkPdfModal';
 
 interface WorkListProps {
   onOpenWorkDetail: (workId: string) => void;
@@ -63,6 +65,7 @@ export const WorkList: React.FC<WorkListProps> = ({
   const [isCheckingReminders, setIsCheckingReminders] = useState(false);
   const [selectedClientIdForWorkDetail, setSelectedClientIdForWorkDetail] = useState<string | null>(null);
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
+  const [pdfExportClient, setPdfExportClient] = useState<Client | null>(null);
 
   const toggleExpandClient = (cId: string) => {
     setExpandedClients((prev) => {
@@ -668,6 +671,16 @@ export const WorkList: React.FC<WorkListProps> = ({
                           <td className="px-4 py-3.5 text-right whitespace-nowrap space-x-1">
                             <button
                               type="button"
+                              id={`btn-download-pdf-client-${group.clientId}`}
+                              onClick={() => setPdfExportClient(group.client)}
+                              className="px-2 py-1 bg-white border border-slate-200 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 text-slate-700 rounded-lg text-[11px] font-medium transition cursor-pointer inline-flex items-center gap-1"
+                              title="Download Client Work Statement PDF"
+                            >
+                              <FileDown className="w-3 h-3 text-indigo-600" />
+                              Download PDF
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => setSelectedClientIdForWorkDetail(group.clientId)}
                               className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[11px] font-semibold transition cursor-pointer"
                               title="View Work History for this client"
@@ -710,14 +723,25 @@ export const WorkList: React.FC<WorkListProps> = ({
                                       {group.client.name} — Work History ({group.projects.length})
                                     </h4>
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => onOpenNewWork(group.clientId)}
-                                    className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 cursor-pointer"
-                                  >
-                                    <Plus className="w-3 h-3" />
-                                    Add Another Work
-                                  </button>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setPdfExportClient(group.client)}
+                                      className="text-xs text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1 cursor-pointer transition"
+                                      title="Download Client Work Statement PDF"
+                                    >
+                                      <FileDown className="w-3.5 h-3.5 text-indigo-600" />
+                                      Download PDF
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => onOpenNewWork(group.clientId)}
+                                      className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                      Add Another Work
+                                    </button>
+                                  </div>
                                 </div>
 
                                 <div className="divide-y divide-slate-100">
@@ -775,6 +799,17 @@ export const WorkList: React.FC<WorkListProps> = ({
                                             </span>
                                             <span className={pStats.remainingAmount > 0 ? 'text-amber-700 font-semibold' : 'text-slate-600'}>
                                               Remaining: ₹{pStats.remainingAmount.toLocaleString('en-IN')}
+                                            </span>
+                                            <span
+                                              className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                                                pStats.status === 'Paid'
+                                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                                  : pStats.status === 'Partially Paid'
+                                                  ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                                  : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                              }`}
+                                            >
+                                              Payment: {pStats.status}
                                             </span>
                                             <span>
                                               Assigned:{' '}
@@ -912,6 +947,13 @@ export const WorkList: React.FC<WorkListProps> = ({
           </div>
         </div>
       )}
+
+      {/* Client Work PDF Export Modal */}
+      <ClientWorkPdfModal
+        isOpen={!!pdfExportClient}
+        onClose={() => setPdfExportClient(null)}
+        client={pdfExportClient}
+      />
     </div>
   );
 };

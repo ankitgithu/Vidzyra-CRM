@@ -183,11 +183,28 @@ export interface Editor {
   createdAt: string;
 }
 
+export interface PaymentAllocationItem {
+  workId: string;
+  amount: number;
+  workName?: string;
+}
+
+export interface WorkPaymentStats {
+  totalAmount: number;
+  paymentReceived: number;
+  remainingAmount: number;
+  status: 'Paid' | 'Partially Paid' | 'Pending';
+  payments: Array<ClientPayment & { allocatedAmount?: number }>;
+}
+
 export interface ClientPayment {
   id: string;
   receiptNumber: string;
   clientId: string;
-  workId?: string;
+  workId?: string; // Legacy / primary work reference
+  allocatedWorkIds?: string[]; // IDs of multiple selected works settled by this payment
+  allocations?: PaymentAllocationItem[]; // Granular allocation breakdown per work
+  advanceAmount?: number; // Excess amount kept as client advance credit
   amount: number;
   date: string;
   paymentDate?: string;

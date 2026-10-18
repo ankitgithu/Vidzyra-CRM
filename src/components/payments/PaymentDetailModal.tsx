@@ -49,6 +49,7 @@ export const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
     activities,
     getClientStats,
     getEditorStats,
+    getWorkPaymentStats,
   } = useCrm();
 
   const [copied, setCopied] = React.useState(false);
@@ -67,6 +68,13 @@ export const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
   const editor = !isClient ? editors.find((e) => e.id === (payment as EditorPayment).editorId) : null;
   const recipientName = isClient ? (client?.name || 'Unknown Client') : (editor?.name || 'Unknown Editor');
 
+  const clientPayment = isClient ? (payment as ClientPayment) : null;
+  const allocatedProjects = clientPayment?.allocatedWorkIds && clientPayment.allocatedWorkIds.length > 0
+    ? projects.filter((p) => clientPayment.allocatedWorkIds!.includes(p.id))
+    : payment.workId
+    ? projects.filter((p) => p.id === payment.workId)
+    : [];
+
   const project = payment.workId ? projects.find((p) => p.id === payment.workId) : null;
 
   // Calculate cumulative financial figures
@@ -76,12 +84,12 @@ export const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
   let paymentStatus: 'Paid' | 'Partial' | 'Pending' = 'Pending';
 
   if (isClient) {
-    if (project) {
-      totalAmount = project.totalBilling;
-      const pays = clientPayments.filter((p) => p.workId === project.id);
-      totalPaid = pays.reduce((sum, p) => sum + p.amount, 0);
-      remaining = Math.max(0, totalAmount - totalPaid);
-      paymentStatus = totalPaid >= totalAmount && totalAmount > 0 ? 'Paid' : totalPaid > 0 ? 'Partial' : 'Pending';
+    if (allocatedProjects.length === 1) {
+      const wStats = getWorkPaymentStats(allocatedProjects[0].id);
+      totalAmount = wStats.totalAmount;
+      totalPaid = wStats.paymentReceived;
+      remaining = wStats.remainingAmount;
+      paymentStatus = wStats.status === 'Paid' ? 'Paid' : wStats.status === 'Partially Paid' ? 'Partial' : 'Pending';
     } else if (client) {
       const stats = getClientStats(client.id);
       totalAmount = stats.totalBilling;
@@ -260,21 +268,40 @@ export const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                 <Briefcase className="w-3.5 h-3.5" />
                 Work / Associated Project
               </span>
-              {project ? (
-                <div>
-                  <div className="font-bold text-slate-900 text-sm">{project.name}</div>
-                  <div className="text-slate-500 text-[11px] mt-0.5">
-                    Type: <span className="font-semibold text-slate-700">{project.workType}</span> (Qty: {project.quantity})
+              {allocatedProjects.length > 0 ? (
+                <div className="space-y-1.5">
+                  <div className="font-bold text-slate-900 text-sm">
+                    {allocatedProjects.length === 1
+                      ? allocatedProjects[0].name
+                      : `${allocatedProjects.length} Works Settled by this Payment`}
                   </div>
-                  <div className="text-slate-500 text-[11px]">
-                    Project Status: <span className="font-semibold text-slate-700">{project.status}</span>
+                  <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                    {allocatedProjects.map((p) => {
+                      const allocItem = clientPayment?.allocations?.find((a) => a.workId === p.id);
+                      return (
+                        <div
+                          key={p.id}
+                          className="flex items-center justify-between text-[11px] bg-white p-1.5 rounded border border-slate-200"
+                        >
+                          <span className="font-medium text-slate-800 truncate mr-2">{p.name}</span>
+                          <span className="font-bold text-emerald-700 shrink-0">
+                            {allocItem ? `₹${allocItem.amount.toLocaleString('en-IN')}` : `₹${p.totalBilling.toLocaleString('en-IN')}`}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
+                  {clientPayment?.advanceAmount && clientPayment.advanceAmount > 0 && (
+                    <div className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block">
+                      + ₹{clientPayment.advanceAmount.toLocaleString('en-IN')} Client Advance
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div>
                   <div className="font-semibold text-slate-700 text-sm">General Account Transaction</div>
-                  <p className="text-slate-400 text-[11px] mt-0.5">
-                    Applied across all project deliverables for this account.
+                  <p className="text-slate-500 text-[11px] mt-0.5">
+                    Unallocated account credit. Edit this payment to choose specific deliverables to settle.
                   </p>
                 </div>
               )}

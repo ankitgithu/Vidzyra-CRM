@@ -50,6 +50,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
     clientPayments,
     activities,
     getClientStats,
+    getWorkPaymentStats,
     setClientPortalStatus,
     setActivePortalUser,
     settings,
@@ -205,12 +206,16 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                   <span className="text-[11px] text-emerald-600 font-medium">{payments.length} transactions</span>
                 </div>
 
-                <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/40">
-                  <span className="text-[10px] font-bold uppercase text-amber-700">Remaining Balance</span>
-                  <div className="text-xl font-bold text-amber-700 mt-1">
-                    ₹{stats.remaining.toLocaleString()}
+                <div className={`p-4 rounded-xl border ${stats.advanceCredit && stats.advanceCredit > 0 ? 'border-emerald-300 bg-emerald-50/50' : 'border-amber-200 bg-amber-50/40'}`}>
+                  <span className={`text-[10px] font-bold uppercase ${stats.advanceCredit && stats.advanceCredit > 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {stats.advanceCredit && stats.advanceCredit > 0 ? 'Advance Credit' : 'Remaining Balance'}
+                  </span>
+                  <div className={`text-xl font-bold mt-1 ${stats.advanceCredit && stats.advanceCredit > 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    ₹{(stats.advanceCredit && stats.advanceCredit > 0 ? stats.advanceCredit : stats.remaining).toLocaleString()}
                   </div>
-                  <span className="text-[11px] text-amber-600 font-medium">Status: {stats.paymentStatus}</span>
+                  <span className={`text-[11px] font-medium ${stats.advanceCredit && stats.advanceCredit > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                    {stats.advanceCredit && stats.advanceCredit > 0 ? 'Client has advance credit' : `Status: ${stats.paymentStatus}`}
+                  </span>
                 </div>
               </div>
 
@@ -297,6 +302,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                   <div className="space-y-2.5">
                     {clientProjects.map((p) => {
                       const displayDate = formatWorkDate(p.workGivenDate, p.createdAt);
+                      const pStats = getWorkPaymentStats(p.id);
                       return (
                         <div
                           key={p.id}
@@ -322,7 +328,18 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                                     : 'bg-slate-200 text-slate-700'
                                 }`}
                               >
-                                Status: {p.status}
+                                {p.status}
+                              </span>
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  pStats.status === 'Paid'
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                    : pStats.status === 'Partially Paid'
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                }`}
+                              >
+                                {pStats.status}
                               </span>
                             </div>
                             <div className="text-xs text-slate-500 mt-1.5 flex flex-wrap gap-3">
@@ -330,6 +347,12 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                               <span>Rate: ₹{(p.clientRate || 0).toLocaleString()}</span>
                               <span className="font-semibold text-slate-800">
                                 Total: ₹{(p.totalBilling || 0).toLocaleString()}
+                              </span>
+                              <span className="text-emerald-700 font-semibold">
+                                Paid: ₹{pStats.paymentReceived.toLocaleString('en-IN')}
+                              </span>
+                              <span className={pStats.remainingAmount > 0 ? 'text-amber-700 font-semibold' : 'text-slate-600'}>
+                                Remaining: ₹{pStats.remainingAmount.toLocaleString('en-IN')}
                               </span>
                               {p.deadline && <span>Deadline: {p.deadline}</span>}
                             </div>
@@ -380,6 +403,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                 ) : (
                   clientProjects.map((p) => {
                     const displayDate = formatWorkDate(p.workGivenDate, p.createdAt);
+                    const pStats = getWorkPaymentStats(p.id);
                     return (
                       <div
                         key={p.id}
@@ -407,12 +431,29 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                             >
                               Status: {p.status}
                             </span>
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                pStats.status === 'Paid'
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                  : pStats.status === 'Partially Paid'
+                                  ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                  : 'bg-rose-50 text-rose-700 border border-rose-200'
+                              }`}
+                            >
+                              {pStats.status}
+                            </span>
                           </div>
                           <div className="text-xs text-slate-500 mt-1 flex flex-wrap gap-3">
                             <span>Qty: {p.quantity || 1}</span>
                             <span>Rate: ₹{(p.clientRate || 0).toLocaleString()}</span>
                             <span className="font-semibold text-slate-800">
                               Total: ₹{(p.totalBilling || 0).toLocaleString()}
+                            </span>
+                            <span className="text-emerald-700 font-semibold">
+                              Paid: ₹{pStats.paymentReceived.toLocaleString('en-IN')}
+                            </span>
+                            <span className={pStats.remainingAmount > 0 ? 'text-amber-700 font-semibold' : 'text-slate-600'}>
+                              Remaining: ₹{pStats.remainingAmount.toLocaleString('en-IN')}
                             </span>
                             {p.deadline && <span>Deadline: {p.deadline}</span>}
                           </div>

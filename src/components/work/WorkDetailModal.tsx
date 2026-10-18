@@ -108,6 +108,15 @@ export const WorkDetailModal: React.FC<WorkDetailModalProps> = ({
     addClientPayment({
       clientId: project.clientId || (project as any).client_id,
       workId: project.id,
+      allocatedWorkIds: [project.id],
+      allocations: [
+        {
+          workId: project.id,
+          amount: Math.min(numeric, workPaymentStats.remainingAmount),
+          workName: project.name,
+        },
+      ],
+      advanceAmount: Math.max(0, numeric - workPaymentStats.remainingAmount),
       amount: numeric,
       date: paymentDate,
       paymentDate,
@@ -491,8 +500,15 @@ export const WorkDetailModal: React.FC<WorkDetailModalProps> = ({
                           <td className="px-3 py-2 font-mono text-[11px] font-bold text-indigo-600">
                             {pay.receiptNumber}
                           </td>
-                          <td className="px-3 py-2 font-bold text-emerald-600">
-                            ₹{(pay.amount || 0).toLocaleString('en-IN')}
+                          <td className="px-3 py-2">
+                            <span className="font-bold text-emerald-600 block">
+                              ₹{(pay.allocatedAmount ?? pay.amount ?? 0).toLocaleString('en-IN')}
+                            </span>
+                            {pay.allocatedAmount && pay.allocatedAmount !== pay.amount && (
+                              <span className="text-[10px] text-slate-400 block">
+                                (of ₹{(pay.amount || 0).toLocaleString('en-IN')} total)
+                              </span>
+                            )}
                           </td>
                           <td className="px-3 py-2">
                             <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700">

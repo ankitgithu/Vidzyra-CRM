@@ -12,6 +12,7 @@ import {
   Activity,
   NotificationItem,
 } from '../types';
+import { formatWorkDate } from './crmDateUtils';
 
 /**
  * Generates and downloads a clean, professional PDF Invoice.
@@ -1291,3 +1292,380 @@ export function generateDatabaseSnapshotPdf(
     size: blob.size,
   };
 }
+
+/**
+ * Generates and downloads a clean, professional Client Work Statement PDF.
+ * Follows exact specifications:
+ * - A4 format with clean modern layout
+ * - Header: Brand Name, CLIENT WORK STATEMENT, Client Name, Client Contact, Report Period, Generated Date
+ * - Work Details Table: | S.No | Date | Work | Qty | Rate | Payment |
+ * - Payment column shows payment status/value directly with the work entry (e.g. ₹1,000 — Received, ₹1,000 — Pending, ₹500 — Partially Received)
+ * - Overall Payment Summary at bottom: Total Payment, Received, Remaining (Remaining = Total Payment - Received)
+ * - Multi-page pagination with repeated table headers and Page X of Y footers
+ */
+export interface ClientWorkStatementPdfParams {
+  client: Client;
+  projects: WorkProject[];
+  settings: BusinessSettings;
+  periodLabel: string;
+  getWorkPaymentStats: (workId: string) => {
+    totalAmount: number;
+    paymentReceived: number;
+    remainingAmount: number;
+  };
+  overallPaymentSummary?: {
+    totalPayment: number;
+    received: number;
+    remaining: number;
+  };
+}
+
+export function generateClientWorkStatementPdf(params: ClientWorkStatementPdfParams): void {
+  const { client, projects, settings, periodLabel, getWorkPaymentStats, overallPaymentSummary } = params;
+
+  const doc = new jsPDF({
+    unit: 'pt',
+    format: 'a4',
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 40;
+  const tableWidth = pageWidth - margin * 2; // 515.28 pt
+  let y = 45;
+
+  const primaryColor = [15, 23, 42]; // slate-900
+  const accentColor = [79, 70, 229]; // indigo-600
+  const mutedColor = [100, 116, 139]; // slate-500
+  const currency = settings.currencySymbol || '₹';
+
+  // Generated date
+  const now = new Date();
+  const generatedDateStr = now.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  // 1. Header: Brand & Title
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+  doc.text(settings.businessName || 'VIDZYRA MEDIA', margin, y);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
+  doc.text('CLIENT WORK STATEMENT', pageWidth - margin, y, { align: 'right' });
+
+  y += 16;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(mutedColor[0], mutedColor[1], mutedColor[2]);
+  if (settings.tagline) {
+    doc.text(settings.tagline, margin, y);
+    y += 12;
+  }
+  const contactLine = [
+    settings.contactEmail ? `Email: ${settings.contactEmail}` : null,
+    settings.contactPhone ? `Tel: ${settings.contactPhone}` : null,
+  ].filter(Boolean).join(' | ');
+  if (contactLine) {
+    doc.text(contactLine, margin, y);
+    y += 12;
+  }
+
+  // Top Divider
+  y += 4;
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(1);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 18;
+
+  // 2. Metadata Block: Client Details (Left) & Statement Info (Right)
+  // Left: Client info
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(mutedColor[0], mutedColor[1], mutedColor[2]);
+  doc.text('STATEMENT ISSUED TO:', margin, y);
+
+  // Right: Statement Details
+  doc.text('STATEMENT DETAILS:', pageWidth / 2 + 30, y);
+
+  y += 14;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+  doc.text(client.name, margin, y);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+  doc.text(`Report Period: ${periodLabel}`, pageWidth / 2 + 30, y);
+
+  y += 13;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(mutedColor[0], mutedColor[1], mutedColor[2]);
+
+  const clientContact = client.phone || client.whatsapp || client.email || '';
+  if (clientContact) {
+    doc.text(`Contact: ${clientContact}`, margin, y);
+  } else {
+    doc.text(`Client ID: ${client.id}`, margin, y);
+  }
+
+  doc.text(`Generated Date: ${generatedDateStr}`, pageWidth / 2 + 30, y);
+
+  y += 13;
+  if (client.email && client.phone) {
+    doc.text(`Email: ${client.email}`, margin, y);
+  } else if (client.notes) {
+    const cleanNotes = client.notes.length > 50 ? client.notes.slice(0, 48) + '...' : client.notes;
+    doc.text(`Notes: ${cleanNotes}`, margin, y);
+  }
+  doc.text(`Total Deliverables: ${projects.length}`, pageWidth / 2 + 30, y);
+
+  // Second Divider
+  y += 16;
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(1);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 16;
+
+  // 3. Work Details Table
+  // Columns: | S.No | Date | Work | Qty | Rate | Payment |
+  const colWidths = {
+    sno: 32,
+    date: 75,
+    work: 175,
+    qty: 38,
+    rate: 75,
+    payment: 120,
+  };
+
+  const drawTableHeader = () => {
+    doc.setFillColor(241, 245, 249); // slate-100
+    doc.rect(margin, y, tableWidth, 20, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(51, 65, 85); // slate-700
+
+    let curX = margin;
+    // S.No
+    doc.text('S.No', curX + colWidths.sno / 2, y + 13, { align: 'center' });
+    curX += colWidths.sno;
+    // Date
+    doc.text('Date', curX + 6, y + 13);
+    curX += colWidths.date;
+    // Work
+    doc.text('Work', curX + 6, y + 13);
+    curX += colWidths.work;
+    // Qty
+    doc.text('Qty', curX + colWidths.qty / 2, y + 13, { align: 'center' });
+    curX += colWidths.qty;
+    // Rate
+    doc.text('Rate', curX + colWidths.rate - 8, y + 13, { align: 'right' });
+    curX += colWidths.rate;
+    // Payment
+    doc.text('Payment', curX + colWidths.payment - 8, y + 13, { align: 'right' });
+
+    y += 20;
+    doc.setDrawColor(203, 213, 225); // slate-300
+    doc.setLineWidth(0.75);
+    doc.line(margin, y, margin + tableWidth, y);
+  };
+
+  drawTableHeader();
+
+  // Draw Table Rows
+  if (projects.length === 0) {
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(9);
+    doc.setTextColor(mutedColor[0], mutedColor[1], mutedColor[2]);
+    doc.text('(No work records found for the selected period)', margin + 12, y + 20);
+    y += 35;
+  } else {
+    projects.forEach((p, index) => {
+      const rowHeight = 22;
+
+      // Check page break
+      if (y + rowHeight > pageHeight - 85) {
+        doc.addPage();
+        y = 45;
+        drawTableHeader();
+      }
+
+      // Alternate row background
+      if (index % 2 === 1) {
+        doc.setFillColor(248, 250, 252); // slate-50
+        doc.rect(margin, y, tableWidth, rowHeight, 'F');
+      }
+
+      const pStats = getWorkPaymentStats(p.id);
+      const totalAmount = pStats.totalAmount ?? (p.totalBilling ?? ((p.quantity || 1) * (p.clientRate || 0)));
+      const paymentReceived = pStats.paymentReceived ?? 0;
+
+      let paymentText = '';
+      let paymentColor = [100, 116, 139]; // slate-500
+      if (paymentReceived >= totalAmount && totalAmount > 0) {
+        paymentText = `${currency} ${totalAmount.toLocaleString('en-IN')} — Received`;
+        paymentColor = [16, 185, 129]; // emerald-600
+      } else if (paymentReceived > 0 && paymentReceived < totalAmount) {
+        paymentText = `${currency} ${paymentReceived.toLocaleString('en-IN')} — Partially Received`;
+        paymentColor = [217, 119, 6]; // amber-600
+      } else {
+        paymentText = `${currency} ${totalAmount.toLocaleString('en-IN')} — Pending`;
+        paymentColor = [225, 29, 72]; // rose-600
+      }
+
+      const rawDate = p.workGivenDate || p.createdAt?.split('T')[0] || p.dueDate;
+      const displayDate = formatWorkDate(rawDate);
+
+      const maxWorkChars = 34;
+      const cleanWorkName = p.name.length > maxWorkChars ? p.name.substring(0, maxWorkChars - 2) + '…' : p.name;
+
+      const rateVal = Number(p.clientRate) || (p.quantity > 0 ? totalAmount / p.quantity : 0);
+
+      const textY = y + 14;
+      let curX = margin;
+
+      // S.No
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(mutedColor[0], mutedColor[1], mutedColor[2]);
+      doc.text(String(index + 1), curX + colWidths.sno / 2, textY, { align: 'center' });
+      curX += colWidths.sno;
+
+      // Date
+      doc.setTextColor(71, 85, 105);
+      doc.text(displayDate, curX + 6, textY);
+      curX += colWidths.date;
+
+      // Work Name
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.text(cleanWorkName, curX + 6, textY);
+      curX += colWidths.work;
+
+      // Qty
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(71, 85, 105);
+      doc.text(String(p.quantity || 1), curX + colWidths.qty / 2, textY, { align: 'center' });
+      curX += colWidths.qty;
+
+      // Rate
+      doc.text(`${currency} ${rateVal.toLocaleString('en-IN')}`, curX + colWidths.rate - 8, textY, { align: 'right' });
+      curX += colWidths.rate;
+
+      // Payment
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(paymentColor[0], paymentColor[1], paymentColor[2]);
+      doc.text(paymentText, curX + colWidths.payment - 8, textY, { align: 'right' });
+
+      y += rowHeight;
+
+      // Row separator
+      doc.setDrawColor(241, 245, 249);
+      doc.setLineWidth(0.5);
+      doc.line(margin, y, margin + tableWidth, y);
+    });
+  }
+
+  // 4. Payment Summary Block
+  let totalPayment = 0;
+  let receivedPayment = 0;
+
+  if (overallPaymentSummary) {
+    totalPayment = overallPaymentSummary.totalPayment;
+    receivedPayment = overallPaymentSummary.received;
+  } else {
+    projects.forEach((p) => {
+      const pStats = getWorkPaymentStats(p.id);
+      const amt = pStats.totalAmount ?? (p.totalBilling ?? ((p.quantity || 1) * (p.clientRate || 0)));
+      totalPayment += amt;
+      receivedPayment += (pStats.paymentReceived ?? 0);
+    });
+  }
+  const remainingPayment = Math.max(0, totalPayment - receivedPayment);
+
+  // Check if summary fits on page
+  const summaryBlockHeight = 85;
+  if (y + summaryBlockHeight > pageHeight - 50) {
+    doc.addPage();
+    y = 45;
+  } else {
+    y += 18;
+  }
+
+  // Summary Container Box
+  const summaryBoxWidth = 240;
+  const summaryX = pageWidth - margin - summaryBoxWidth;
+
+  doc.setFillColor(248, 250, 252); // slate-50
+  doc.roundedRect(summaryX, y, summaryBoxWidth, 75, 4, 4, 'F');
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.75);
+  doc.roundedRect(summaryX, y, summaryBoxWidth, 75, 4, 4, 'D');
+
+  let sY = y + 16;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(mutedColor[0], mutedColor[1], mutedColor[2]);
+  doc.text('OVERALL PAYMENT SUMMARY', summaryX + 12, sY);
+
+  sY += 16;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+  doc.text('Total Payment:', summaryX + 12, sY);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`${currency} ${totalPayment.toLocaleString('en-IN')}`, summaryX + summaryBoxWidth - 12, sY, { align: 'right' });
+
+  sY += 15;
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(mutedColor[0], mutedColor[1], mutedColor[2]);
+  doc.text('Received:', summaryX + 12, sY);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(16, 185, 129); // emerald-600
+  doc.text(`${currency} ${receivedPayment.toLocaleString('en-IN')}`, summaryX + summaryBoxWidth - 12, sY, { align: 'right' });
+
+  sY += 15;
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(mutedColor[0], mutedColor[1], mutedColor[2]);
+  doc.text('Remaining:', summaryX + 12, sY);
+  doc.setFont('helvetica', 'bold');
+  if (remainingPayment > 0) {
+    doc.setTextColor(225, 29, 72); // rose-600
+  } else {
+    doc.setTextColor(16, 185, 129); // emerald-600
+  }
+  doc.text(`${currency} ${remainingPayment.toLocaleString('en-IN')}`, summaryX + summaryBoxWidth - 12, sY, { align: 'right' });
+
+  // 5. Page Numbering & Running Footers
+  const totalPages = (doc.internal as any).getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    const footerY = pageHeight - 25;
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.5);
+    doc.line(margin, footerY - 8, pageWidth - margin, footerY - 8);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(148, 163, 184); // slate-400
+    doc.text(
+      `${settings.businessName || 'VIDZYRA MEDIA'} — Client Work Statement (${client.name})`,
+      margin,
+      footerY
+    );
+    doc.text(`Page ${p} of ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
+  }
+
+  // 6. Save PDF
+  const safeClientName = client.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const safePeriod = periodLabel.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const fileName = `Work_Statement_${safeClientName}_${safePeriod}.pdf`;
+  doc.save(fileName);
+}
+

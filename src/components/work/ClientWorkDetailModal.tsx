@@ -14,11 +14,13 @@ import {
   User,
   DollarSign,
   ChevronRight,
+  FileDown,
 } from 'lucide-react';
 import { useCrm } from '../../context/CrmContext';
 import { WorkProject } from '../../types';
 import { formatWorkDate, getWorkSortTime } from '../../utils/crmDateUtils';
 import { getProjectDriveFolderUrl } from '../../utils/driveUtils';
+import { ClientWorkPdfModal } from './ClientWorkPdfModal';
 
 interface ClientWorkDetailModalProps {
   isOpen: boolean;
@@ -41,6 +43,7 @@ export const ClientWorkDetailModal: React.FC<ClientWorkDetailModalProps> = ({
 }) => {
   const { clients, projects, editors, getClientStats, getWorkPaymentStats, deleteProject, settings } = useCrm();
   const [projectToDelete, setProjectToDelete] = useState<WorkProject | null>(null);
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
 
   const client = useMemo(() => {
     if (!clientId) return null;
@@ -135,6 +138,16 @@ export const ClientWorkDetailModal: React.FC<ClientWorkDetailModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2.5 self-end sm:self-auto">
+            <button
+              id="btn-detail-modal-download-client-work-pdf"
+              type="button"
+              onClick={() => setIsPdfModalOpen(true)}
+              className="px-3.5 py-2 bg-white border border-slate-200 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 text-slate-700 rounded-xl text-xs font-bold shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+              title="Download Client Work Statement PDF"
+            >
+              <FileDown className="w-4 h-4 text-indigo-600" />
+              Download PDF
+            </button>
             <button
               id="btn-add-work-for-client"
               type="button"
@@ -278,6 +291,19 @@ export const ClientWorkDetailModal: React.FC<ClientWorkDetailModalProps> = ({
                         </span>
                         <span className={`font-bold ${workStats.remainingAmount > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
                           ₹{workStats.remainingAmount.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                      <div className="flex items-center">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            workStats.status === 'Paid'
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : workStats.status === 'Partially Paid'
+                              ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                              : 'bg-rose-50 text-rose-700 border border-rose-200'
+                          }`}
+                        >
+                          {workStats.status}
                         </span>
                       </div>
                     </div>
@@ -444,6 +470,13 @@ export const ClientWorkDetailModal: React.FC<ClientWorkDetailModalProps> = ({
           </div>
         </div>
       )}
+
+      {/* Client Work PDF Export Modal */}
+      <ClientWorkPdfModal
+        isOpen={isPdfModalOpen}
+        onClose={() => setIsPdfModalOpen(false)}
+        client={client}
+      />
     </div>
   );
 };
