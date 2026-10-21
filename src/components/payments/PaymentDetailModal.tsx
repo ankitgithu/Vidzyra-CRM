@@ -299,9 +299,9 @@ export const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                 </div>
               ) : (
                 <div>
-                  <div className="font-semibold text-slate-700 text-sm">General Account Transaction</div>
+                  <div className="font-semibold text-slate-700 text-sm">General Account Payment</div>
                   <p className="text-slate-500 text-[11px] mt-0.5">
-                    Unallocated account credit. Edit this payment to choose specific deliverables to settle.
+                    Automatically allocated across client deliverables chronologically (Oldest First). You can also edit this payment to select specific works.
                   </p>
                 </div>
               )}

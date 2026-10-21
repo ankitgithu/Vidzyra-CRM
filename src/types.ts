@@ -563,5 +563,4 @@ export interface CalendarTask {
   updatedAt?: string;
   createdBy?: string;
 }
-
-
+export * from './types/socialMedia';

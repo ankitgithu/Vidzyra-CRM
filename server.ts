@@ -53,6 +53,10 @@ async function startServer() {
     const portalRoutes = [
       '/portal',
       '/portal/*',
+      '/client',
+      '/client/*',
+      '/smm',
+      '/smm/*',
       '/client-portal',
       '/client-portal/*',
       '/editor-portal',

@@ -129,28 +129,27 @@ export function computeClientWorkAllocations(
     const thisPaymentAllocations: PaymentAllocationItem[] = [];
 
     // Determine target works for this payment
-    let targetWorkIds: string[] = [];
+    let targetWorks: WorkProject[] = [];
 
     if (
       payment.allocatedWorkIds &&
       Array.isArray(payment.allocatedWorkIds) &&
       payment.allocatedWorkIds.length > 0
     ) {
-      // Explicitly selected works
-      targetWorkIds = payment.allocatedWorkIds;
+      // Explicitly selected works (oldest to newest)
+      const selectedSet = new Set(payment.allocatedWorkIds);
+      targetWorks = sortedWorks.filter((w) => selectedSet.has(w.id));
     } else if (payment.allocations && Array.isArray(payment.allocations) && payment.allocations.length > 0) {
-      targetWorkIds = payment.allocations.map((a) => a.workId);
+      const selectedSet = new Set(payment.allocations.map((a) => a.workId));
+      targetWorks = sortedWorks.filter((w) => selectedSet.has(w.id));
     } else if (payment.workId || (payment as any).work_id || (payment as any).projectId) {
       // Reliable single work reference
       const singleId = (payment.workId || (payment as any).work_id || (payment as any).projectId) as string;
-      targetWorkIds = [singleId];
+      targetWorks = sortedWorks.filter((w) => w.id === singleId);
     } else {
-      // No reliable relationship exists: keep as existing unallocated payment rather than guessing
-      targetWorkIds = [];
+      // General / account-level payment: automatically settles client deliverables from oldest to newest
+      targetWorks = sortedWorks;
     }
-
-    // Filter to only valid client works and order them oldest first
-    const targetWorks = sortedWorks.filter((w) => targetWorkIds.includes(w.id));
 
     // Allocate from oldest target work to newest
     targetWorks.forEach((work) => {

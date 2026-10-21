@@ -1,12 +1,15 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   setDoc,
   updateDoc,
   deleteDoc,
   onSnapshot,
   query,
+  where,
+  limit,
   writeBatch,
   Unsubscribe,
 } from 'firebase/firestore';
@@ -28,6 +31,7 @@ import {
   Receipt,
   BackupHistoryRecord,
   CalendarTask,
+  SocialMediaClient,
 } from '../types';
 
 export const COLLECTIONS = {
@@ -49,6 +53,7 @@ export const COLLECTIONS = {
   BACKUP_HISTORY: 'backupHistory',
   CALENDAR_TASKS: 'calendarTasks',
   PERSONAL_EXPENSES: 'personalExpenses',
+  SOCIAL_MEDIA_CLIENTS: 'socialMediaClients',
 } as const;
 
 // ==========================================
@@ -501,6 +506,55 @@ export function subscribeCalendarTasks(
     },
     (err) => {
       handleFirestoreError(err, OperationType.LIST, COLLECTIONS.CALENDAR_TASKS);
+      if (onError) onError(err);
+    }
+  );
+}
+
+export function subscribeSocialMediaClients(
+  onData: (clients: SocialMediaClient[]) => void,
+  onError?: (err: unknown) => void
+): Unsubscribe {
+  const colRef = collection(db, COLLECTIONS.SOCIAL_MEDIA_CLIENTS);
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const items: SocialMediaClient[] = [];
+      snapshot.forEach((docSnap) => {
+        const raw = docSnap.data();
+        items.push({
+          ...(raw as SocialMediaClient),
+          id: docSnap.id,
+          crmClientId: raw.crmClientId || undefined,
+          name: String(raw.name || ''),
+          contactPerson: String(raw.contactPerson || ''),
+          phone: String(raw.phone || ''),
+          whatsapp: String(raw.whatsapp || ''),
+          email: String(raw.email || ''),
+          businessCategory: String(raw.businessCategory || ''),
+          address: String(raw.address || ''),
+          managementStartDate: String(raw.managementStartDate || ''),
+          packageStartDate: String(raw.packageStartDate || ''),
+          packageRenewalDate: String(raw.packageRenewalDate || ''),
+          clientStatus: (raw.clientStatus || 'Active') as SocialMediaClient['clientStatus'],
+          packageName: String(raw.packageName || 'Social Media Management'),
+          monthlyPackagePrice: Number(raw.monthlyPackagePrice) || 0,
+          billingCycle: (raw.billingCycle || 'Monthly') as SocialMediaClient['billingCycle'],
+          packageStatus: (raw.packageStatus || 'Active') as SocialMediaClient['packageStatus'],
+          accounts: Array.isArray(raw.accounts) ? raw.accounts : [],
+          cycles: Array.isArray(raw.cycles) ? raw.cycles : [],
+          notes: raw.notes || {},
+          portalToken: raw.portalToken || undefined,
+          portalStatus: (raw.portalStatus || 'Active') as SocialMediaClient['portalStatus'],
+          createdAt: safeDateString(raw.createdAt) || new Date().toISOString(),
+          updatedAt: raw.updatedAt ? safeDateString(raw.updatedAt) : undefined,
+        });
+      });
+      items.sort((a, b) => safeSortDesc(a.createdAt, b.createdAt));
+      onData(items);
+    },
+    (err) => {
+      handleFirestoreError(err, OperationType.LIST, COLLECTIONS.SOCIAL_MEDIA_CLIENTS);
       if (onError) onError(err);
     }
   );
@@ -1180,6 +1234,138 @@ export async function deleteCalendarTaskDoc(id: string): Promise<void> {
   }
 }
 
+// ------------------------------------------
+// Social Media Clients CRUD
+// ------------------------------------------
+
+export async function createSocialMediaClientDoc(client: SocialMediaClient): Promise<void> {
+  try {
+    const docRef = doc(db, COLLECTIONS.SOCIAL_MEDIA_CLIENTS, client.id);
+    const cleaned = cleanFirestoreData({
+      ...client,
+      createdAt: client.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    await setDoc(docRef, cleaned, { merge: true });
+
+    // Also register shared portal link token for external client access
+    if (client.portalToken) {
+      await setDoc(
+        doc(db, COLLECTIONS.SHARED_LINKS, client.portalToken),
+        cleanFirestoreData({
+          id: client.portalToken,
+          token: client.portalToken,
+          type: 'smm',
+          targetId: client.id,
+          isActive: client.portalStatus !== 'Disabled',
+          createdAt: client.createdAt || new Date().toISOString(),
+        }),
+        { merge: true }
+      );
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, `${COLLECTIONS.SOCIAL_MEDIA_CLIENTS}/${client.id}`);
+    throw err;
+  }
+}
+
+export async function updateSocialMediaClientDoc(id: string, updates: Partial<SocialMediaClient>): Promise<void> {
+  try {
+    const docRef = doc(db, COLLECTIONS.SOCIAL_MEDIA_CLIENTS, id);
+    const cleaned = cleanFirestoreData({
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    });
+    await setDoc(docRef, cleaned, { merge: true });
+
+    // If portalToken or portalStatus updated, keep SHARED_LINKS in sync
+    if (updates.portalToken) {
+      await setDoc(
+        doc(db, COLLECTIONS.SHARED_LINKS, updates.portalToken),
+        cleanFirestoreData({
+          id: updates.portalToken,
+          token: updates.portalToken,
+          type: 'smm',
+          targetId: id,
+          isActive: updates.portalStatus !== 'Disabled',
+          updatedAt: new Date().toISOString(),
+        }),
+        { merge: true }
+      );
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `${COLLECTIONS.SOCIAL_MEDIA_CLIENTS}/${id}`);
+    throw err;
+  }
+}
+
+export async function deleteSocialMediaClientDoc(id: string): Promise<void> {
+  try {
+    const docRef = doc(db, COLLECTIONS.SOCIAL_MEDIA_CLIENTS, id);
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `${COLLECTIONS.SOCIAL_MEDIA_CLIENTS}/${id}`);
+    throw err;
+  }
+}
+
+/**
+ * Direct lookup to find a Social Media Management client by their secure portal token or ID.
+ * Bypasses in-memory cache delays to ensure immediate, reliable client portal loading.
+ */
+export async function fetchSocialMediaClientByToken(token: string): Promise<SocialMediaClient | null> {
+  if (!token) return null;
+  try {
+    // 1. Direct document lookup by ID
+    const directDoc = await getDoc(doc(db, COLLECTIONS.SOCIAL_MEDIA_CLIENTS, token));
+    if (directDoc.exists()) {
+      return { ...directDoc.data(), id: directDoc.id } as SocialMediaClient;
+    }
+
+    // 2. Query by portalToken field
+    const tokenQuery = query(
+      collection(db, COLLECTIONS.SOCIAL_MEDIA_CLIENTS),
+      where('portalToken', '==', token),
+      limit(1)
+    );
+    const tokenSnap = await getDocs(tokenQuery);
+    if (!tokenSnap.empty) {
+      const matchDoc = tokenSnap.docs[0];
+      return { ...matchDoc.data(), id: matchDoc.id } as SocialMediaClient;
+    }
+
+    // 3. Lookup via sharedLinks collection
+    const linkDoc = await getDoc(doc(db, COLLECTIONS.SHARED_LINKS, token));
+    if (linkDoc.exists()) {
+      const linkData = linkDoc.data();
+      if (linkData.targetId) {
+        const targetDoc = await getDoc(doc(db, COLLECTIONS.SOCIAL_MEDIA_CLIENTS, linkData.targetId));
+        if (targetDoc.exists()) {
+          return { ...targetDoc.data(), id: targetDoc.id } as SocialMediaClient;
+        }
+      }
+    }
+
+    // 4. Exhaustive scan fallback for case-insensitive or legacy tokens
+    const allSnap = await getDocs(collection(db, COLLECTIONS.SOCIAL_MEDIA_CLIENTS));
+    for (const d of allSnap.docs) {
+      const data = d.data();
+      if (
+        data.portalToken === token ||
+        d.id === token ||
+        (data.portalToken && data.portalToken.toLowerCase() === token.toLowerCase())
+      ) {
+        return { ...data, id: d.id } as SocialMediaClient;
+      }
+    }
+
+    return null;
+  } catch (err) {
+    console.warn('[Firestore] Error in fetchSocialMediaClientByToken:', err);
+    return null;
+  }
+}
+
 // ==========================================
 // FULL DATABASE BACKUP & RESTORE UTILITIES
 // ==========================================
@@ -1217,6 +1403,7 @@ export async function restoreDatabaseToFirestore(backupData: {
   receipts?: Receipt[];
   adminUsers?: any[];
   calendarTasks?: CalendarTask[];
+  socialMediaClients?: SocialMediaClient[];
   settings?: BusinessSettings;
 }): Promise<void> {
   // 1. Collect all existing document IDs from CRM data collections to delete them
@@ -1452,6 +1639,16 @@ export async function restoreDatabaseToFirestore(backupData: {
       if (!task.id) continue;
       ops.push((batch) => {
         batch.set(doc(db, COLLECTIONS.CALENDAR_TASKS, task.id), cleanFirestoreData(task));
+      });
+    }
+  }
+
+  // Social Media Clients
+  if (Array.isArray(backupData.socialMediaClients)) {
+    for (const smc of backupData.socialMediaClients) {
+      if (!smc.id) continue;
+      ops.push((batch) => {
+        batch.set(doc(db, COLLECTIONS.SOCIAL_MEDIA_CLIENTS, smc.id), cleanFirestoreData(smc));
       });
     }
   }

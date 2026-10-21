@@ -133,6 +133,7 @@ export const DataCenter: React.FC = () => {
     invoices,
     receipts,
     calendarTasks,
+    socialMediaClients,
     isLoading,
     restoreDatabase,
   } = useCrm();
@@ -428,6 +429,7 @@ export const DataCenter: React.FC = () => {
       invoices: invoices || [],
       receipts: receipts || [],
       calendarTasks: calendarTasks || [],
+      socialMediaClients: socialMediaClients || [],
       revisions: firestoreRevisions,
       sharedLinks: derivedSharedLinks,
     };

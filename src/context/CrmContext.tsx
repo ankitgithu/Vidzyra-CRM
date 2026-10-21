@@ -23,6 +23,8 @@ import {
   PaymentStatus,
   EditorAvailability,
   CalendarTask,
+  SocialMediaClient,
+  generateSmmPortalToken,
 } from '../types';
 import { initialSettings } from '../mockData';
 import * as firestoreService from '../services/firestoreService';
@@ -62,8 +64,8 @@ export interface CrmContextType {
   setSelectedWorkId: (id: string | null, updateHistory?: boolean) => void;
 
   // Portal simulation / preview
-  activePortalUser: { type: 'admin' | 'client' | 'editor'; id: string } | null;
-  setActivePortalUser: (user: { type: 'admin' | 'client' | 'editor'; id: string } | null) => void;
+  activePortalUser: { type: 'admin' | 'client' | 'editor' | 'smm'; id: string } | null;
+  setActivePortalUser: (user: { type: 'admin' | 'client' | 'editor' | 'smm'; id: string } | null) => void;
 
   // Client CRUD
   addClient: (clientData: Omit<Client, 'id' | 'createdAt' | 'portalToken' | 'portalStatus'>) => Client;
@@ -279,6 +281,14 @@ export interface CrmContextType {
   deleteCalendarTask: (id: string) => Promise<void>;
   toggleCalendarTaskStatus: (id: string) => Promise<void>;
 
+  // Social Media Management
+  socialMediaClients: SocialMediaClient[];
+  addSocialMediaClient: (clientData: Omit<SocialMediaClient, 'id' | 'createdAt'>) => Promise<SocialMediaClient>;
+  updateSocialMediaClient: (id: string, updates: Partial<SocialMediaClient>) => Promise<void>;
+  deleteSocialMediaClient: (id: string) => Promise<void>;
+  regenerateSmmPortalToken: (id: string) => Promise<string>;
+  setSmmPortalStatus: (id: string, status: 'Active' | 'Disabled') => Promise<void>;
+
   // Automated Due Reminders
   runDueRemindersCheck: () => Promise<number>;
 
@@ -296,6 +306,9 @@ export const ROUTE_TO_TAB: Record<string, string> = {
   '/editors': 'editors',
   '/work': 'work',
   '/projects': 'work',
+  '/social-media': 'social-media',
+  '/socialmedia': 'social-media',
+  '/smm': 'social-media',
   '/payments': 'payments',
   '/reports': 'reports',
   '/calendar': 'calendar',
@@ -311,6 +324,7 @@ export const TAB_TO_ROUTE: Record<string, string> = {
   clients: '/clients',
   editors: '/editors',
   work: '/work',
+  'social-media': '/social-media',
   payments: '/payments',
   reports: '/reports',
   calendar: '/calendar',
@@ -372,7 +386,7 @@ export function getInitialTab(): string {
     const savedTab = localStorage.getItem('vidzyra_crm_active_tab');
     if (
       savedTab &&
-      ['dashboard', 'clients', 'editors', 'work', 'payments', 'reports', 'datacenter', 'settings', 'personal-expenses'].includes(savedTab)
+      ['dashboard', 'clients', 'editors', 'work', 'social-media', 'payments', 'reports', 'datacenter', 'settings', 'personal-expenses'].includes(savedTab)
     ) {
       return savedTab;
     }
@@ -406,6 +420,22 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return [];
     }
   });
+  const [socialMediaClients, setSocialMediaClients] = useState<SocialMediaClient[]>(() => {
+    try {
+      const saved = localStorage.getItem('vidzyra_crm_social_media_clients');
+      if (saved) {
+        const parsed: SocialMediaClient[] = JSON.parse(saved);
+        return parsed.map((c) => ({
+          ...c,
+          portalToken: c.portalToken || generateSmmPortalToken(c.name),
+          portalStatus: c.portalStatus || 'Active',
+        }));
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  });
 
   // Firestore status
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -420,7 +450,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Portal simulation state
   const [activePortalUser, setActivePortalUser] = useState<{
-    type: 'admin' | 'client' | 'editor';
+    type: 'admin' | 'client' | 'editor' | 'smm';
     id: string;
   } | null>(null);
 
@@ -515,7 +545,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     let active = true;
     let initialCount = 0;
-    const requiredFeeds = 12;
+    const requiredFeeds = 14;
 
     const checkReady = () => {
       initialCount++;
@@ -697,10 +727,46 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               // ignore
             }
           }
+          checkReady();
         }
       },
       (err) => {
         console.warn('Personal expenses sync notice:', err);
+        checkReady();
+      }
+    );
+
+    const unsubSocialMediaClients = firestoreService.subscribeSocialMediaClients(
+      (data) => {
+        if (active) {
+          const normalized = data.map((c) => {
+            const token = c.portalToken || generateSmmPortalToken(c.name);
+            const status = c.portalStatus || 'Active';
+            // If token was missing in Firestore, persist it so it never mutates
+            if (!c.portalToken) {
+              firestoreService.updateSocialMediaClientDoc(c.id, {
+                portalToken: token,
+                portalStatus: status,
+              }).catch(() => {});
+            }
+            return {
+              ...c,
+              portalToken: token,
+              portalStatus: status,
+            };
+          });
+          setSocialMediaClients(normalized);
+          try {
+            localStorage.setItem('vidzyra_crm_social_media_clients', JSON.stringify(normalized));
+          } catch {
+            // ignore
+          }
+          checkReady();
+        }
+      },
+      (err) => {
+        console.warn('Social media clients sync notice:', err);
+        checkReady();
       }
     );
 
@@ -728,6 +794,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubReceipts();
       unsubCalendarTasks();
       unsubPersonalExpenses();
+      unsubSocialMediaClients();
     };
   }, []);
 
@@ -3002,6 +3069,102 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // ------------------------------------------
+  // Feature: Social Media Management
+  // ------------------------------------------
+  const addSocialMediaClient = async (
+    clientData: Omit<SocialMediaClient, 'id' | 'createdAt'>
+  ): Promise<SocialMediaClient> => {
+    const id = `smc_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    const createdAt = new Date().toISOString();
+    const token = clientData.portalToken || generateSmmPortalToken(clientData.name);
+    const newClient: SocialMediaClient = {
+      ...clientData,
+      id,
+      portalToken: token,
+      portalStatus: clientData.portalStatus || 'Active',
+      createdAt,
+      updatedAt: createdAt,
+    };
+    setSocialMediaClients((prev) => [newClient, ...prev]);
+    await firestoreService.createSocialMediaClientDoc(newClient);
+
+    addActivity({
+      who: settings.adminName || 'Admin',
+      action: 'enrolled SMM client',
+      what: `Enrolled "${newClient.name}" in Social Media Management`,
+      entityType: 'client',
+      entityId: id,
+    });
+
+    return newClient;
+  };
+
+  const regenerateSmmPortalToken = async (id: string): Promise<string> => {
+    const client = socialMediaClients.find((c) => c.id === id);
+    const newToken = generateSmmPortalToken(client?.name);
+    await updateSocialMediaClient(id, { portalToken: newToken });
+    addActivity({
+      who: settings.adminName || 'Admin',
+      action: 'regenerated portal link',
+      what: `Regenerated live client portal link for "${client?.name || 'SMM Client'}"`,
+      entityType: 'portal',
+      entityId: id,
+    });
+    return newToken;
+  };
+
+  const setSmmPortalStatus = async (id: string, status: 'Active' | 'Disabled'): Promise<void> => {
+    const client = socialMediaClients.find((c) => c.id === id);
+    await updateSocialMediaClient(id, { portalStatus: status });
+    addActivity({
+      who: settings.adminName || 'Admin',
+      action: status === 'Active' ? 'activated SMM portal' : 'disabled SMM portal',
+      what: `Client portal for "${client?.name || 'SMM Client'}" status set to ${status}`,
+      entityType: 'portal',
+      entityId: id,
+    });
+  };
+
+  const updateSocialMediaClient = async (
+    id: string,
+    updates: Partial<SocialMediaClient>
+  ): Promise<void> => {
+    const current = socialMediaClients.find((c) => c.id === id);
+    const updated = {
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    setSocialMediaClients((prev) => prev.map((c) => (c.id === id ? { ...c, ...updated } : c)));
+    await firestoreService.updateSocialMediaClientDoc(id, updated);
+
+    if (current && updates.name && updates.name !== current.name) {
+      addActivity({
+        who: settings.adminName || 'Admin',
+        action: 'updated SMM client',
+        what: `Updated details for Social Media client "${updates.name}"`,
+        entityType: 'client',
+        entityId: id,
+      });
+    }
+  };
+
+  const deleteSocialMediaClient = async (id: string): Promise<void> => {
+    const clientToDelete = socialMediaClients.find((c) => c.id === id);
+    setSocialMediaClients((prev) => prev.filter((c) => c.id !== id));
+    await firestoreService.deleteSocialMediaClientDoc(id);
+
+    if (clientToDelete) {
+      addActivity({
+        who: settings.adminName || 'Admin',
+        action: 'removed SMM client',
+        what: `Removed Social Media Management client "${clientToDelete.name}"`,
+        entityType: 'client',
+        entityId: id,
+      });
+    }
+  };
+
+  // ------------------------------------------
   // Feature: Editor Availability Status
   // ------------------------------------------
   const updateEditorAvailability = async (
@@ -3099,6 +3262,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const restoredRatings: Rating[] = Array.isArray(backupData.ratings) ? backupData.ratings : [];
       const restoredInvoices: Invoice[] = Array.isArray(backupData.invoices) ? backupData.invoices : [];
       const restoredReceipts: Receipt[] = Array.isArray(backupData.receipts) ? backupData.receipts : [];
+      const restoredSocialMediaClients: SocialMediaClient[] = Array.isArray(backupData.socialMediaClients) ? backupData.socialMediaClients : [];
       const restoredSettings: BusinessSettings = backupData.settings && typeof backupData.settings === 'object'
         ? { ...initialSettings, ...backupData.settings }
         : settings;
@@ -3120,6 +3284,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         invoices: restoredInvoices,
         receipts: restoredReceipts,
         adminUsers: Array.isArray(backupData.adminUsers) ? backupData.adminUsers : [],
+        socialMediaClients: restoredSocialMediaClients,
         settings: restoredSettings,
       });
 
@@ -3136,6 +3301,7 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setRatings(restoredRatings);
       setInvoices(restoredInvoices);
       setReceipts(restoredReceipts);
+      setSocialMediaClients(restoredSocialMediaClients);
       setSettings(restoredSettings);
 
       // 4. Log the restore activity
@@ -3261,6 +3427,12 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateCalendarTask,
         deleteCalendarTask,
         toggleCalendarTaskStatus,
+        socialMediaClients,
+        addSocialMediaClient,
+        updateSocialMediaClient,
+        deleteSocialMediaClient,
+        regenerateSmmPortalToken,
+        setSmmPortalStatus,
         runDueRemindersCheck,
         resetToDefaultData,
         resetToDemoData: resetToDefaultData,

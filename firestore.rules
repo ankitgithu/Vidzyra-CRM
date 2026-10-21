@@ -146,6 +146,17 @@ service cloud.firestore {
       allow list: if true;
       allow write: if isValidId(taskId);
     }
+
+    // Social Media Management
+    match /socialMediaClients/{clientId} {
+      allow get: if isValidId(clientId);
+      allow list: if true;
+      allow write: if isValidId(clientId);
+    }
+
+    match /socialMediaClients/{clientId}/{allPaths=**} {
+      allow read, write: if isValidId(clientId);
+    }
   }
 }
 
