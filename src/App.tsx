@@ -24,7 +24,6 @@ import { Settings } from './components/settings/Settings';
 import { PersonalExpenseView } from './components/personalExpense/PersonalExpenseView';
 import { ClientPortalView } from './components/portal/ClientPortalView';
 import { EditorPortalView } from './components/portal/EditorPortalView';
-import { SmmClientPortalView } from './components/socialMedia/SmmClientPortalView';
 import { EditLinkModal } from './components/modals/EditLinkModal';
 import { SharePortalModal } from './components/modals/SharePortalModal';
 import { AdminLogin } from './components/auth/AdminLogin';
@@ -105,27 +104,20 @@ const MainApp: React.FC = () => {
           c.id === sharedPortal.token ||
           (c.portalToken && c.portalToken.toLowerCase() === sharedPortal.token.toLowerCase())
       );
-      if (client) {
-        return <ClientPortalView clientId={client.id} isSharedPortal={true} />;
+      if (!client) {
+        return (
+          <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-center">
+            <div className="bg-white p-8 rounded-2xl max-w-md w-full shadow-2xl space-y-4">
+              <AlertCircle className="w-12 h-12 text-rose-500 mx-auto" />
+              <h2 className="text-xl font-bold text-slate-900">Client Portal Not Found</h2>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                The requested client portal link is invalid or has expired. Please contact Vidzyra support.
+              </p>
+            </div>
+          </div>
+        );
       }
-
-      // Check if token belongs to an SMM client
-      const smmClient = socialMediaClients.find(
-        (c) =>
-          c.portalToken === sharedPortal.token ||
-          c.id === sharedPortal.token ||
-          (c.portalToken && c.portalToken.toLowerCase() === sharedPortal.token.toLowerCase())
-      );
-
-      // If token belongs to SMM or wasn't found in regular video clients,
-      // route to SmmClientPortalView which has live Firestore fallback lookup
-      return (
-        <SmmClientPortalView
-          portalToken={sharedPortal.token}
-          clientId={smmClient?.id}
-          isSharedPortal={true}
-        />
-      );
+      return <ClientPortalView clientId={client.id} isSharedPortal={true} />;
     }
 
     if (sharedPortal.type === 'editor') {
@@ -144,22 +136,6 @@ const MainApp: React.FC = () => {
         );
       }
       return <EditorPortalView editorId={editor.id} isSharedPortal={true} />;
-    }
-
-    if (sharedPortal.type === 'smm') {
-      const smmClient = socialMediaClients.find(
-        (c) =>
-          c.portalToken === sharedPortal.token ||
-          c.id === sharedPortal.token ||
-          (c.portalToken && c.portalToken.toLowerCase() === sharedPortal.token.toLowerCase())
-      );
-      return (
-        <SmmClientPortalView
-          portalToken={sharedPortal.token}
-          clientId={smmClient?.id}
-          isSharedPortal={true}
-        />
-      );
     }
   }
 
@@ -182,18 +158,6 @@ const MainApp: React.FC = () => {
         <>
           <EditorPortalView
             editorId={activePortalUser.id}
-            onExit={() => setActivePortalUser(null)}
-            isSharedPortal={false}
-          />
-          <FloatingCalculator />
-        </>
-      );
-    }
-    if (activePortalUser.type === 'smm') {
-      return (
-        <>
-          <SmmClientPortalView
-            clientId={activePortalUser.id}
             onExit={() => setActivePortalUser(null)}
             isSharedPortal={false}
           />

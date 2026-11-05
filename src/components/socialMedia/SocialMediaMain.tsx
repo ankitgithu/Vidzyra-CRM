@@ -25,7 +25,7 @@ import { useCrm } from '../../context/CrmContext';
 import { SocialMediaClient, SocialClientStatus, PackageStatus } from '../../types';
 import { SocialClientFormModal } from './SocialClientFormModal';
 import { SocialClientDetailModal } from './SocialClientDetailModal';
-import { SmmSharePortalModal } from './SmmSharePortalModal';
+import { getCyclePaymentMetrics } from '../../utils/smmBillingInvoiceGenerator';
 
 export const SocialMediaMain: React.FC = () => {
   const { socialMediaClients, deleteSocialMediaClient } = useCrm();
@@ -38,9 +38,9 @@ export const SocialMediaMain: React.FC = () => {
 
   // Modal State
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
-  const [portalClient, setPortalClient] = useState<SocialMediaClient | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [clientToEdit, setClientToEdit] = useState<SocialMediaClient | null>(null);
+  const [selectedCycleByClient, setSelectedCycleByClient] = useState<Record<string, string>>({});
 
   // Filtered Clients
   const filteredClients = useMemo(() => {
@@ -294,22 +294,31 @@ export const SocialMediaMain: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredClients.map((c) => {
-            const latestCycle = (c.cycles || [])[0];
-            const pkg = Number(latestCycle?.packagePrice) || Number(c.monthlyPackagePrice) || 0;
-            const extra = (latestCycle?.extraWork || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
-            const totalBilling = pkg + extra;
-            const totalReceived = (latestCycle?.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
-            const remainingBalance = Math.max(0, totalBilling - totalReceived);
+            const clientCycles = c.cycles || [];
+            const activeCycleId = selectedCycleByClient[c.id] || clientCycles[0]?.id || '';
+            const activeCycle = clientCycles.find((cy) => cy.id === activeCycleId) || clientCycles[0];
 
+            // Financial Metrics using strict SMM calculation logic
+            let totalPayment = 0;
+            let receivedPayment = 0;
+            let remainingPayment = 0;
             let paymentStatus: 'Paid' | 'Partially Paid' | 'Pending' = 'Pending';
-            if (totalReceived >= totalBilling && totalBilling > 0) {
-              paymentStatus = 'Paid';
-            } else if (totalReceived > 0) {
-              paymentStatus = 'Partially Paid';
+
+            if (activeCycle) {
+              const metrics = getCyclePaymentMetrics(c, activeCycle);
+              totalPayment = metrics.totalPayment;
+              receivedPayment = metrics.receivedPayment;
+              remainingPayment = metrics.remainingPayment;
+              paymentStatus = metrics.paymentStatus;
+            } else {
+              totalPayment = Number(c.monthlyPackagePrice) || 0;
+              receivedPayment = 0;
+              remainingPayment = totalPayment;
+              paymentStatus = totalPayment === 0 ? 'Paid' : 'Pending';
             }
 
-            // Deliverables counts
-            const deliverables = latestCycle?.deliverables || [];
+            // Deliverables counts for active cycle
+            const deliverables = activeCycle?.deliverables || [];
             const plannedCount = deliverables.reduce((s, d) => s + (Number(d.planned) || 0), 0);
             const completedCount = deliverables.reduce((s, d) => s + (Number(d.completed) || 0), 0);
             const progressPercent = plannedCount > 0 ? Math.min(100, Math.round((completedCount / plannedCount) * 100)) : 0;
@@ -332,7 +341,7 @@ export const SocialMediaMain: React.FC = () => {
                 className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs hover:shadow-md hover:border-indigo-300 transition flex flex-col justify-between space-y-4"
               >
                 {/* Header */}
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -369,8 +378,81 @@ export const SocialMediaMain: React.FC = () => {
                     </div>
                   ) : null}
 
+                  {/* PROMINENT CLIENT PAYMENT SUMMARY (Part 1 & Part 2) */}
+                  <div className="bg-slate-50/90 border border-slate-200 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between text-[11px] gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <DollarSign className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                        {clientCycles.length > 1 ? (
+                          <select
+                            value={activeCycle?.id || ''}
+                            onChange={(e) => {
+                              setSelectedCycleByClient((prev) => ({
+                                ...prev,
+                                [c.id]: e.target.value,
+                              }));
+                            }}
+                            className="bg-white border border-slate-200 text-slate-800 text-[10px] font-semibold rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                            title="Select billing cycle to view"
+                          >
+                            {clientCycles.map((cy) => (
+                              <option key={cy.id} value={cy.id}>
+                                {cy.cycleLabel || cy.yearMonth}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="font-semibold text-slate-700 truncate">
+                            {activeCycle ? activeCycle.cycleLabel || activeCycle.yearMonth : 'Current Billing'}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Payment Status Badge */}
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                          paymentStatus === 'Paid'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : paymentStatus === 'Partially Paid'
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-rose-50 text-rose-700 border border-rose-200'
+                        }`}
+                      >
+                        {paymentStatus}
+                      </span>
+                    </div>
+
+                    {/* Three Financial Metrics */}
+                    <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-200/70 text-center">
+                      <div className="bg-white p-1.5 rounded-lg border border-slate-100">
+                        <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-tight">
+                          Total Payment
+                        </span>
+                        <span className="text-xs sm:text-[13px] font-bold text-slate-900 tabular-nums block">
+                          ₹{totalPayment.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                      <div className="bg-emerald-50/50 p-1.5 rounded-lg border border-emerald-100">
+                        <span className="text-[9px] uppercase font-bold text-emerald-700 block tracking-tight">
+                          Received
+                        </span>
+                        <span className="text-xs sm:text-[13px] font-bold text-emerald-700 tabular-nums block">
+                          ₹{receivedPayment.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                      <div className="bg-rose-50/50 p-1.5 rounded-lg border border-rose-100">
+                        <span className="text-[9px] uppercase font-bold text-rose-700 block tracking-tight">
+                          Remaining
+                        </span>
+                        <span className="text-xs sm:text-[13px] font-bold text-rose-700 tabular-nums block">
+                          ₹{remainingPayment.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Contact Info */}
-                  <div className="text-xs text-slate-500 space-y-1 pt-1">
+                  <div className="text-xs text-slate-500 space-y-1 pt-0.5">
                     {c.contactPerson && (
                       <div className="flex items-center gap-1.5 truncate">
                         <Building className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -429,13 +511,13 @@ export const SocialMediaMain: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Current Month Cycle Progress & Financials */}
-                <div className="space-y-2 pt-1 border-t border-slate-100 text-xs">
+                {/* Deliverables Progress */}
+                <div className="space-y-1.5 pt-1 border-t border-slate-100 text-xs">
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-slate-500 font-medium">
-                      {latestCycle ? latestCycle.cycleLabel : 'Current Month'} Deliverables:
+                      {activeCycle ? activeCycle.cycleLabel || activeCycle.yearMonth : 'Current Month'} Deliverables:
                     </span>
-                    <span className="font-bold text-slate-800">
+                    <span className="font-bold text-slate-800 tabular-nums">
                       {completedCount} / {plannedCount} Done ({progressPercent}%)
                     </span>
                   </div>
@@ -447,27 +529,9 @@ export const SocialMediaMain: React.FC = () => {
                       style={{ width: `${progressPercent}%` }}
                     />
                   </div>
-
-                  {/* Payment snapshot */}
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-slate-500 text-[11px]">
-                      Billing: <strong>₹{totalBilling.toLocaleString('en-IN')}</strong>
-                    </span>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        paymentStatus === 'Paid'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : paymentStatus === 'Partially Paid'
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-rose-50 text-rose-700 border border-rose-200'
-                      }`}
-                    >
-                      {paymentStatus}
-                    </span>
-                  </div>
                 </div>
 
-                {/* Action Buttons */}
+                {/* Action Buttons (Portal removed per strict user instruction) */}
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-1 flex-wrap">
                   <div className="flex items-center space-x-1">
                     <button
@@ -488,15 +552,6 @@ export const SocialMediaMain: React.FC = () => {
                       title="Delete Client"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPortalClient(c)}
-                      className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                      title="Live Shareable Client Portal Link"
-                    >
-                      <Share2 className="w-3.5 h-3.5" />
-                      <span>Client Portal</span>
                     </button>
                   </div>
 
@@ -535,13 +590,6 @@ export const SocialMediaMain: React.FC = () => {
           setClientToEdit(client);
           setIsFormOpen(true);
         }}
-      />
-
-      {/* SMM Client Share Portal Modal */}
-      <SmmSharePortalModal
-        isOpen={Boolean(portalClient)}
-        onClose={() => setPortalClient(null)}
-        client={portalClient}
       />
     </div>
   );

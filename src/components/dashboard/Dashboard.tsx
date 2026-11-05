@@ -23,6 +23,7 @@ import {
 import { useCrm } from '../../context/CrmContext';
 import { WorkProject, Activity } from '../../types';
 import { ExecutionTrendsChart } from './ExecutionTrendsChart';
+import { FinancialOverviewAndCharts } from './FinancialOverviewAndCharts';
 import { formatINR } from '../../utils/currencyUtils';
 
 interface DashboardProps {
@@ -45,6 +46,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     clientPayments,
     editorPayments,
     expenses,
+    socialMediaClients,
     activities,
     clearActivities,
     getFinancialPulse,
@@ -268,7 +270,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
       )}
 
       {/* ========================================================
-          1. FINANCIAL PULSE (Prominently integrated inside Dashboard)
+          1. UNIFIED FINANCIAL OVERVIEW & CHARTS (Normal + Social Media)
+             Sections A, B, C, Date Filters, and 6 Financial Visualizations
+         ======================================================== */}
+      <section id="section-unified-financial-analytics" className="space-y-6">
+        <FinancialOverviewAndCharts
+          projects={projects}
+          clientPayments={clientPayments}
+          clients={clients}
+          socialMediaClients={socialMediaClients}
+        />
+      </section>
+
+      {/* ========================================================
+          INTERNAL CRM COST BREAKDOWN & PERSONAL EXPENSES
          ======================================================== */}
       <section id="section-financial-pulse" className="space-y-4">
         <div className="flex items-center justify-between border-b border-slate-200 pb-3">

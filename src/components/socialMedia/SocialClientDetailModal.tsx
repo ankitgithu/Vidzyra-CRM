@@ -41,7 +41,10 @@ import {
   PREDEFINED_SMM_SERVICES,
 } from '../../types';
 import { generateSmmMonthlyReportPdf } from '../../utils/smmPdfGenerator';
-import { SmmSharePortalModal } from './SmmSharePortalModal';
+import {
+  generateSmmBillingInvoicePdf,
+  generateSmmBillingInvoiceJpg,
+} from '../../utils/smmBillingInvoiceGenerator';
 
 interface SocialClientDetailModalProps {
   isOpen: boolean;
@@ -81,7 +84,6 @@ export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = (
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
   const [isNewCycleOpen, setIsNewCycleOpen] = useState(false);
   const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
-  const [isSharePortalOpen, setIsSharePortalOpen] = useState(false);
 
   // Forms State for Sub-modals
   // 1. Deliverable Form
@@ -603,16 +605,6 @@ export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = (
           </div>
 
           <div className="flex items-center space-x-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => setIsSharePortalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-400/30 text-xs font-semibold rounded-lg shadow-xs transition cursor-pointer"
-              title="Share Live Client Portal Link"
-            >
-              <Share2 className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Client Portal</span>
-            </button>
-
             {activeCycle && (
               <button
                 type="button"
@@ -1399,36 +1391,133 @@ export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = (
 
           {/* TAB 4: PAYMENTS */}
           {activeTab === 'payments' && (
-            <div className="space-y-4">
-              <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h3 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                    <DollarSign className="w-4 h-4 text-emerald-600" />
-                    Monthly Financials &amp; Payments Ledger
-                  </h3>
-                  <p className="text-[11px] text-slate-600 mt-0.5">
-                    Total Billing: ₹{cycleMetrics.totalBilling.toLocaleString('en-IN')} • Received: ₹
-                    {cycleMetrics.totalReceived.toLocaleString('en-IN')} • Remaining: ₹
-                    {cycleMetrics.remainingBalance.toLocaleString('en-IN')}
-                  </p>
+            <div className="space-y-5">
+              {/* Top Summary Cards (Part 3) */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                    Total Payment
+                  </span>
+                  <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
+                    ₹{cycleMetrics.totalBilling.toLocaleString('en-IN')}
+                  </div>
+                  <span className="text-[11px] text-slate-500 mt-0.5 block">
+                    Package (₹{cycleMetrics.packagePrice.toLocaleString('en-IN')}) + Extra (₹{cycleMetrics.extraWorkTotal.toLocaleString('en-IN')})
+                  </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsAddPaymentOpen(true)}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add Payment
-                </button>
+
+                <div className="bg-emerald-50/60 p-4 rounded-xl border border-emerald-200 shadow-2xs">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
+                    Received Payment
+                  </span>
+                  <div className="text-xl font-bold text-emerald-700 mt-1 tabular-nums">
+                    ₹{cycleMetrics.totalReceived.toLocaleString('en-IN')}
+                  </div>
+                  <span className="text-[11px] text-emerald-600 mt-0.5 block">
+                    {(activeCycle?.payments || []).length} payment(s) recorded
+                  </span>
+                </div>
+
+                <div className="bg-rose-50/60 p-4 rounded-xl border border-rose-200 shadow-2xs">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 block">
+                    Remaining Payment
+                  </span>
+                  <div className="text-xl font-bold text-rose-700 mt-1 tabular-nums">
+                    ₹{cycleMetrics.remainingBalance.toLocaleString('en-IN')}
+                  </div>
+                  <span className="text-[11px] text-rose-600 mt-0.5 block">
+                    {cycleMetrics.remainingBalance === 0 ? 'Fully settled' : 'Balance due'}
+                  </span>
+                </div>
+
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                    Payment Status
+                  </span>
+                  <div className="mt-1">
+                    <span
+                      className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${
+                        cycleMetrics.paymentStatus === 'Paid'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          : cycleMetrics.paymentStatus === 'Partially Paid'
+                          ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                          : 'bg-rose-100 text-rose-800 border border-rose-200'
+                      }`}
+                    >
+                      {cycleMetrics.paymentStatus}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-500 mt-0.5 block truncate">
+                    {activeCycle ? activeCycle.cycleLabel || activeCycle.yearMonth : 'Cycle'}
+                  </span>
+                </div>
               </div>
 
+              {/* Action Buttons Toolbar (Part 3 & Part 4) */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="w-4 h-4 text-emerald-600" />
+                  <span className="text-xs font-bold text-slate-800">
+                    Monthly Payments Ledger &amp; Billing Statement
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {activeCycle && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          generateSmmBillingInvoicePdf({
+                            client,
+                            cycle: activeCycle,
+                            settings,
+                          })
+                        }
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold shadow-2xs transition cursor-pointer"
+                        title="Download Billing Statement / Invoice as PDF"
+                      >
+                        <FileDown className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Download PDF</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          generateSmmBillingInvoiceJpg({
+                            client,
+                            cycle: activeCycle,
+                            settings,
+                          })
+                        }
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold shadow-2xs transition cursor-pointer"
+                        title="Download Billing Statement / Invoice as JPG"
+                      >
+                        <FileDown className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Download JPG</span>
+                      </button>
+                    </>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setIsAddPaymentOpen(true)}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition shadow-xs cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Payment</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Payment History Table with S.No, Date, Amount, Payment Mode, Reference ID, Notes, Actions */}
               {(!activeCycle?.payments || activeCycle.payments.length === 0) ? (
                 <div className="p-8 border border-dashed border-slate-200 rounded-xl bg-slate-50 text-center">
                   <p className="text-xs text-slate-400 italic">No payments recorded for this monthly cycle yet.</p>
                   <button
                     type="button"
                     onClick={() => setIsAddPaymentOpen(true)}
-                    className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 hover:text-emerald-700"
+                    className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 hover:text-emerald-700 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     Record First Payment
@@ -1439,18 +1528,27 @@ export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = (
                   <table className="w-full text-xs text-left">
                     <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                       <tr>
-                        <th className="px-3 py-2.5">Date</th>
-                        <th className="px-3 py-2.5">Payment Mode</th>
-                        <th className="px-3 py-2.5">Reference ID</th>
+                        <th className="px-3 py-2.5 w-12 text-center">S.No</th>
+                        <th className="px-3 py-2.5">Payment Date</th>
                         <th className="px-3 py-2.5 text-right">Amount</th>
+                        <th className="px-3 py-2.5">Payment Mode</th>
+                        <th className="px-3 py-2.5">Transaction ID / Reference</th>
                         <th className="px-3 py-2.5">Notes</th>
-                        <th className="px-3 py-2.5 text-right">Actions</th>
+                        <th className="px-3 py-2.5 text-right w-16">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {activeCycle.payments.map((p) => (
-                        <tr key={p.id} className="hover:bg-slate-50/70">
-                          <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{p.date}</td>
+                      {activeCycle.payments.map((p, idx) => (
+                        <tr key={p.id} className="hover:bg-slate-50/70 transition">
+                          <td className="px-3 py-2.5 text-center text-slate-400 font-mono text-[11px]">
+                            {idx + 1}
+                          </td>
+                          <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap font-medium">
+                            {p.date}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-bold text-emerald-700 tabular-nums">
+                            ₹{(Number(p.amount) || 0).toLocaleString('en-IN')}
+                          </td>
                           <td className="px-3 py-2.5">
                             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                               {p.paymentMode}
@@ -1459,15 +1557,15 @@ export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = (
                           <td className="px-3 py-2.5 font-mono text-[11px] font-bold text-indigo-600">
                             {p.referenceNumber || '-'}
                           </td>
-                          <td className="px-3 py-2.5 text-right font-bold text-emerald-700">
-                            ₹{(p.amount || 0).toLocaleString('en-IN')}
+                          <td className="px-3 py-2.5 text-slate-500">
+                            {p.notes || '-'}
                           </td>
-                          <td className="px-3 py-2.5 text-slate-500">{p.notes || '-'}</td>
                           <td className="px-3 py-2.5 text-right">
                             <button
                               type="button"
                               onClick={() => handleDeletePayment(p.id)}
                               className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-100 transition cursor-pointer"
+                              title="Delete Payment"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1477,13 +1575,13 @@ export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = (
                     </tbody>
                     <tfoot className="bg-slate-50 border-t border-slate-200 font-bold">
                       <tr>
-                        <td colSpan={3} className="px-3 py-2.5 text-right text-slate-700">
+                        <td colSpan={2} className="px-3 py-2.5 text-right text-slate-700">
                           Total Payments Received:
                         </td>
-                        <td className="px-3 py-2.5 text-right text-emerald-700">
+                        <td className="px-3 py-2.5 text-right text-emerald-700 tabular-nums">
                           ₹{cycleMetrics.totalReceived.toLocaleString('en-IN')}
                         </td>
-                        <td colSpan={2} />
+                        <td colSpan={4} />
                       </tr>
                     </tfoot>
                   </table>
@@ -2374,13 +2472,6 @@ export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = (
             </div>
           </div>
         )}
-
-        {/* SMM Client Share Portal Modal */}
-        <SmmSharePortalModal
-          isOpen={isSharePortalOpen}
-          onClose={() => setIsSharePortalOpen(false)}
-          client={client}
-        />
       </div>
     </div>
   );
