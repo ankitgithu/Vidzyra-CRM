@@ -14,7 +14,10 @@ export interface SmmBillingInvoiceParams {
  * Remaining Payment = Math.max(0, Total Payment - Received Payment)
  */
 export function getCyclePaymentMetrics(client: SocialMediaClient, cycle: SmmMonthlyCycle) {
-  const packagePrice = Number(cycle.packagePrice) || Number(client.monthlyPackagePrice) || 0;
+  const packagePrice =
+    cycle.packagePrice !== undefined && cycle.packagePrice !== null
+      ? Number(cycle.packagePrice) || 0
+      : Number(client.monthlyPackagePrice) || 0;
   const extraWorkList = cycle.extraWork || [];
   const extraWorkTotal = extraWorkList.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
   const totalPayment = packagePrice + extraWorkTotal;

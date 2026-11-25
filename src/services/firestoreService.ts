@@ -1269,7 +1269,13 @@ export async function createSocialMediaClientDoc(client: SocialMediaClient): Pro
   }
 }
 
-export async function updateSocialMediaClientDoc(id: string, updates: Partial<SocialMediaClient>): Promise<void> {
+export async function updateSocialMediaClientDoc(
+  id: string,
+  updates: Partial<SocialMediaClient>
+): Promise<SocialMediaClient | null> {
+  if (!id || typeof id !== 'string' || !id.trim()) {
+    throw new Error('Cannot save Social Media client: missing or invalid client ID.');
+  }
   try {
     const docRef = doc(db, COLLECTIONS.SOCIAL_MEDIA_CLIENTS, id);
     const cleaned = cleanFirestoreData({
@@ -1293,6 +1299,40 @@ export async function updateSocialMediaClientDoc(id: string, updates: Partial<So
         { merge: true }
       );
     }
+
+    // Confirm and read back the persisted document from Firestore
+    const savedSnap = await getDoc(docRef);
+    if (!savedSnap.exists()) {
+      throw new Error('Saved record could not be verified in Firestore.');
+    }
+    const raw = savedSnap.data();
+    return {
+      ...(raw as SocialMediaClient),
+      id: savedSnap.id,
+      crmClientId: raw.crmClientId || undefined,
+      name: String(raw.name || ''),
+      contactPerson: String(raw.contactPerson || ''),
+      phone: String(raw.phone || ''),
+      whatsapp: String(raw.whatsapp || ''),
+      email: String(raw.email || ''),
+      businessCategory: String(raw.businessCategory || ''),
+      address: String(raw.address || ''),
+      managementStartDate: String(raw.managementStartDate || ''),
+      packageStartDate: String(raw.packageStartDate || ''),
+      packageRenewalDate: String(raw.packageRenewalDate || ''),
+      clientStatus: (raw.clientStatus || 'Active') as SocialMediaClient['clientStatus'],
+      packageName: String(raw.packageName || 'Social Media Management'),
+      monthlyPackagePrice: Number(raw.monthlyPackagePrice) || 0,
+      billingCycle: (raw.billingCycle || 'Monthly') as SocialMediaClient['billingCycle'],
+      packageStatus: (raw.packageStatus || 'Active') as SocialMediaClient['packageStatus'],
+      accounts: Array.isArray(raw.accounts) ? raw.accounts : [],
+      cycles: Array.isArray(raw.cycles) ? raw.cycles : [],
+      notes: raw.notes || {},
+      portalToken: raw.portalToken || undefined,
+      portalStatus: (raw.portalStatus || 'Active') as SocialMediaClient['portalStatus'],
+      createdAt: safeDateString(raw.createdAt) || new Date().toISOString(),
+      updatedAt: raw.updatedAt ? safeDateString(raw.updatedAt) : undefined,
+    };
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `${COLLECTIONS.SOCIAL_MEDIA_CLIENTS}/${id}`);
     throw err;

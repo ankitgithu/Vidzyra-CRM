@@ -45,12 +45,13 @@ import {
   generateSmmBillingInvoicePdf,
   generateSmmBillingInvoiceJpg,
 } from '../../utils/smmBillingInvoiceGenerator';
+import { WorkProgressPaymentOverview } from './WorkProgressPaymentOverview';
 
 interface SocialClientDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   clientId: string | null;
-  onEditClient?: (client: SocialMediaClient) => void;
+  onEditClient?: (client: SocialMediaClient, activeCycleId?: string) => void;
 }
 
 export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = ({
@@ -84,6 +85,13 @@ export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = (
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
   const [isNewCycleOpen, setIsNewCycleOpen] = useState(false);
   const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
+
+  // Direct Edit Agreed Package Amount Modal State
+  const [isEditPackagePriceOpen, setIsEditPackagePriceOpen] = useState(false);
+  const [editPackagePriceInput, setEditPackagePriceInput] = useState<string>('');
+  const [isSavingPackagePrice, setIsSavingPackagePrice] = useState(false);
+  const [editPackagePriceError, setEditPackagePriceError] = useState<string | null>(null);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
 
   // Forms State for Sub-modals
   // 1. Deliverable Form
@@ -222,7 +230,10 @@ export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = (
         deliverablesRemaining: 0,
       };
     }
-    const packagePrice = Number(activeCycle.packagePrice) || Number(client.monthlyPackagePrice) || 0;
+    const packagePrice =
+      activeCycle.packagePrice !== undefined && activeCycle.packagePrice !== null
+        ? Number(activeCycle.packagePrice) || 0
+        : Number(client.monthlyPackagePrice) || 0;
     const extraWorkTotal = (activeCycle.extraWork || []).reduce(
       (sum, item) => sum + (Number(item.amount) || 0),
       0
@@ -267,6 +278,61 @@ export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = (
     await updateSocialMediaClient(client.id, { cycles: updatedCycles });
   };
 
+  // Open Direct Edit Agreed Package Price Modal
+  const openEditPackagePriceModal = () => {
+    if (!activeCycle) return;
+    setEditPackagePriceInput(String(cycleMetrics.packagePrice));
+    setEditPackagePriceError(null);
+    setIsEditPackagePriceOpen(true);
+  };
+
+  // Save Updated Agreed Package Price to Firestore
+  const handleSavePackagePrice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSavingPackagePrice || !activeCycle) return;
+
+    const trimmed = editPackagePriceInput.trim();
+    const parsedPrice = Number(trimmed);
+    if (trimmed === '' || isNaN(parsedPrice) || !isFinite(parsedPrice) || parsedPrice < 0) {
+      setEditPackagePriceError('Please enter a valid agreed package amount (₹0 or greater).');
+      return;
+    }
+
+    setIsSavingPackagePrice(true);
+    setEditPackagePriceError(null);
+
+    try {
+      const updatedCycles = client.cycles.map((c) =>
+        c.id === activeCycle.id ? { ...c, packagePrice: parsedPrice } : c
+      );
+
+      const isLatestCycle = client.cycles[0]?.id === activeCycle.id;
+      const updatePayload: Partial<SocialMediaClient> = isLatestCycle
+        ? { cycles: updatedCycles, monthlyPackagePrice: parsedPrice }
+        : { cycles: updatedCycles };
+
+      await updateSocialMediaClient(client.id, updatePayload);
+
+      setIsEditPackagePriceOpen(false);
+      setSaveSuccessMessage(
+        `Agreed package amount updated to ₹${parsedPrice.toLocaleString('en-IN')} for ${
+          activeCycle.cycleLabel || activeCycle.yearMonth
+        } and saved.`
+      );
+      window.setTimeout(() => {
+        setSaveSuccessMessage((prev) =>
+          prev && prev.includes(parsedPrice.toLocaleString('en-IN')) ? null : prev
+        );
+      }, 5000);
+    } catch (err: any) {
+      setEditPackagePriceError(
+        err?.message || 'Failed to save updated package amount to Firestore. Please try again.'
+      );
+    } finally {
+      setIsSavingPackagePrice(false);
+    }
+  };
+
   // 1. ADD DELIVERABLE
   const handleSaveDeliverable = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -300,6 +366,14 @@ export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = (
     if (!activeCycle) return;
     const updatedDeliverables = (activeCycle.deliverables || []).map((d) =>
       d.id === delId ? { ...d, completed: Math.max(0, newCompleted) } : d
+    );
+    await updateActiveCycle({ ...activeCycle, deliverables: updatedDeliverables });
+  };
+
+  const handleUpdateDeliverablePlanned = async (delId: string, newPlanned: number) => {
+    if (!activeCycle) return;
+    const updatedDeliverables = (activeCycle.deliverables || []).map((d) =>
+      d.id === delId ? { ...d, planned: Math.max(1, newPlanned) } : d
     );
     await updateActiveCycle({ ...activeCycle, deliverables: updatedDeliverables });
   };
@@ -626,7 +700,7 @@ export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = (
             {onEditClient && (
               <button
                 type="button"
-                onClick={() => onEditClient(client)}
+                onClick={() => onEditClient(client, activeCycle?.id)}
                 className="p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-white/10 transition cursor-pointer"
                 title="Edit Client"
               >
@@ -697,8 +771,20 @@ export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = (
         {/* KPI Summary Cards for Selected Month */}
         <div className="px-6 py-3.5 bg-slate-50 border-b border-slate-200 grid grid-cols-2 sm:grid-cols-6 gap-2 text-center text-xs">
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block">Package Price</span>
-            <span className="font-bold text-slate-900 text-sm">
+            <div className="flex items-center justify-center gap-1">
+              <span className="text-[10px] uppercase font-bold text-slate-400">Package Price</span>
+              {activeCycle && (
+                <button
+                  type="button"
+                  onClick={openEditPackagePriceModal}
+                  className="text-indigo-500 hover:text-indigo-700 p-0.5 rounded hover:bg-indigo-50 transition cursor-pointer"
+                  title="Edit agreed monthly package price"
+                >
+                  <Edit2 className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+            <span className="font-bold text-slate-900 text-sm tabular-nums">
               ₹{cycleMetrics.packagePrice.toLocaleString('en-IN')}
             </span>
           </div>
@@ -823,6 +909,37 @@ export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = (
 
         {/* Tab Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
+          {/* Save Confirmation Banner */}
+          {saveSuccessMessage && (
+            <div className="px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-3 text-xs text-emerald-800 font-semibold animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{saveSuccessMessage}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSaveSuccessMessage(null)}
+                className="text-emerald-600 hover:text-emerald-800 p-0.5 rounded cursor-pointer"
+                title="Dismiss"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* WORK PROGRESS & PAYMENT OVERVIEW (Additive Section) */}
+          {activeCycle && (
+            <WorkProgressPaymentOverview
+              cycleLabel={activeCycle.cycleLabel || activeCycle.yearMonth}
+              packagePrice={cycleMetrics.packagePrice}
+              deliverables={activeCycle.deliverables}
+              payments={activeCycle.payments}
+              extraWorkTotal={cycleMetrics.extraWorkTotal}
+              onRecordPayment={() => setIsAddPaymentOpen(true)}
+              onEditPackagePrice={openEditPackagePriceModal}
+            />
+          )}
+
           {/* TAB 1: DELIVERABLES & WORK TRACKING */}
           {activeTab === 'deliverables' && (
             <div className="space-y-6">
@@ -872,8 +989,29 @@ export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = (
                               <td className="px-3 py-2.5 font-bold text-slate-900">
                                 {del.service}
                               </td>
-                              <td className="px-3 py-2.5 text-center font-bold text-slate-800">
-                                {del.planned}
+                              <td className="px-3 py-2.5 text-center">
+                                <div className="inline-flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateDeliverablePlanned(del.id, del.planned - 1)}
+                                    disabled={del.planned <= 1}
+                                    className="w-5 h-5 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-slate-600 font-bold disabled:opacity-30 cursor-pointer"
+                                    title="Decrease planned quantity"
+                                  >
+                                    -
+                                  </button>
+                                  <span className="font-bold text-slate-800 min-w-[20px] text-center tabular-nums">
+                                    {del.planned}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateDeliverablePlanned(del.id, del.planned + 1)}
+                                    className="w-5 h-5 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-slate-600 font-bold cursor-pointer"
+                                    title="Increase planned quantity"
+                                  >
+                                    +
+                                  </button>
+                                </div>
                               </td>
                               <td className="px-3 py-2.5 text-center">
                                 <div className="inline-flex items-center gap-1.5">
@@ -1395,9 +1533,22 @@ export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = (
               {/* Top Summary Cards (Part 3) */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                    Total Payment
-                  </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                      Total Payment
+                    </span>
+                    {activeCycle && (
+                      <button
+                        type="button"
+                        onClick={openEditPackagePriceModal}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
+                        title="Edit agreed package amount"
+                      >
+                        <Edit2 className="w-3 h-3" />
+                        <span>Edit Package</span>
+                      </button>
+                    )}
+                  </div>
                   <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
                     ₹{cycleMetrics.totalBilling.toLocaleString('en-IN')}
                   </div>
@@ -2466,6 +2617,88 @@ export const SocialClientDetailModal: React.FC<SocialClientDetailModalProps> = (
                     className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold"
                   >
                     Connect
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* SUB-MODAL: EDIT AGREED PACKAGE AMOUNT */}
+        {isEditPackagePriceOpen && activeCycle && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+            <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Edit Agreed Package Amount</h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {client.name} · {activeCycle.cycleLabel || activeCycle.yearMonth}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={isSavingPackagePrice}
+                  onClick={() => setIsEditPackagePriceOpen(false)}
+                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer disabled:opacity-40"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {editPackagePriceError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{editPackagePriceError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSavePackagePrice} className="space-y-4 text-xs">
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Current Saved Amount</span>
+                  <strong className="text-slate-900 tabular-nums">
+                    ₹{cycleMetrics.packagePrice.toLocaleString('en-IN')}
+                  </strong>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    New Agreed Package Amount (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    autoFocus
+                    value={editPackagePriceInput}
+                    onChange={(e) => {
+                      setEditPackagePriceInput(e.target.value);
+                      if (editPackagePriceError) setEditPackagePriceError(null);
+                    }}
+                    placeholder="e.g. 15000"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 tabular-nums"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1.5">
+                    Existing payment transactions (₹{cycleMetrics.totalReceived.toLocaleString('en-IN')} received) and deliverables will remain untouched. Earned payment, collectible amount, and balance will recalculate automatically.
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={isSavingPackagePrice}
+                    onClick={() => setIsEditPackagePriceOpen(false)}
+                    className="px-3.5 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg font-semibold transition cursor-pointer disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingPackagePrice}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-xs transition cursor-pointer disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{isSavingPackagePrice ? 'Saving...' : 'Save Amount'}</span>
                   </button>
                 </div>
               </form>

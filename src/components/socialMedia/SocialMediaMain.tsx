@@ -40,6 +40,8 @@ export const SocialMediaMain: React.FC = () => {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [clientToEdit, setClientToEdit] = useState<SocialMediaClient | null>(null);
+  const [editCycleId, setEditCycleId] = useState<string | null>(null);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [selectedCycleByClient, setSelectedCycleByClient] = useState<Record<string, string>>({});
 
   // Filtered Clients
@@ -76,7 +78,10 @@ export const SocialMediaMain: React.FC = () => {
         if (!latestCycle) {
           if (paymentStatusFilter !== 'Pending') return false;
         } else {
-          const pkg = Number(latestCycle.packagePrice) || Number(c.monthlyPackagePrice) || 0;
+          const pkg =
+            latestCycle.packagePrice !== undefined && latestCycle.packagePrice !== null
+              ? Number(latestCycle.packagePrice) || 0
+              : Number(c.monthlyPackagePrice) || 0;
           const extra = (latestCycle.extraWork || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
           const totalBilling = pkg + extra;
           const received = (latestCycle.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
@@ -135,6 +140,22 @@ export const SocialMediaMain: React.FC = () => {
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
+      {saveNotice && (
+        <div className="px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-3 text-xs text-emerald-800 font-semibold">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{saveNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSaveNotice(null)}
+            className="text-emerald-700 hover:text-emerald-900 font-bold text-xs cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Top Banner & Action */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -156,6 +177,7 @@ export const SocialMediaMain: React.FC = () => {
           type="button"
           onClick={() => {
             setClientToEdit(null);
+            setEditCycleId(null);
             setIsFormOpen(true);
           }}
           className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow-md transition cursor-pointer self-start sm:self-auto"
@@ -538,6 +560,7 @@ export const SocialMediaMain: React.FC = () => {
                       type="button"
                       onClick={() => {
                         setClientToEdit(c);
+                        setEditCycleId(activeCycle?.id || null);
                         setIsFormOpen(true);
                       }}
                       className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
@@ -576,8 +599,20 @@ export const SocialMediaMain: React.FC = () => {
         onClose={() => {
           setIsFormOpen(false);
           setClientToEdit(null);
+          setEditCycleId(null);
         }}
         clientToEdit={clientToEdit}
+        targetCycleId={editCycleId}
+        onSaved={(savedClient) => {
+          setSaveNotice(
+            `Saved updates for "${savedClient.name}" (Monthly Package: ₹${(
+              Number(savedClient.monthlyPackagePrice) || 0
+            ).toLocaleString('en-IN')}).`
+          );
+          window.setTimeout(() => {
+            setSaveNotice((prev) => (prev && prev.includes(savedClient.name) ? null : prev));
+          }, 5000);
+        }}
       />
 
       {/* Detail / Monthly Hub Modal */}
@@ -585,9 +620,10 @@ export const SocialMediaMain: React.FC = () => {
         isOpen={!!selectedClientId}
         onClose={() => setSelectedClientId(null)}
         clientId={selectedClientId}
-        onEditClient={(client) => {
+        onEditClient={(client, activeCycleId) => {
           setSelectedClientId(null);
           setClientToEdit(client);
+          setEditCycleId(activeCycleId || null);
           setIsFormOpen(true);
         }}
       />

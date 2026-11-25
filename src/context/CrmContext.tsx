@@ -3129,13 +3129,29 @@ export const CrmProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     id: string,
     updates: Partial<SocialMediaClient>
   ): Promise<void> => {
+    if (!id || typeof id !== 'string') {
+      throw new Error('Invalid Social Media Management client ID.');
+    }
     const current = socialMediaClients.find((c) => c.id === id);
     const updated = {
       ...updates,
       updatedAt: new Date().toISOString(),
     };
-    setSocialMediaClients((prev) => prev.map((c) => (c.id === id ? { ...c, ...updated } : c)));
-    await firestoreService.updateSocialMediaClientDoc(id, updated);
+    // Wait for Firestore database confirmation before updating frontend state
+    const confirmedClient = await firestoreService.updateSocialMediaClientDoc(id, updated);
+
+    setSocialMediaClients((prev) => {
+      const next = prev.map((c) => {
+        if (c.id !== id) return c;
+        return confirmedClient ? { ...c, ...confirmedClient } : { ...c, ...updated };
+      });
+      try {
+        localStorage.setItem('vidzyra_crm_social_media_clients', JSON.stringify(next));
+      } catch {
+        // ignore storage quota issues
+      }
+      return next;
+    });
 
     if (current && updates.name && updates.name !== current.name) {
       addActivity({

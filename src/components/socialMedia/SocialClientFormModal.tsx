@@ -28,6 +28,7 @@ interface SocialClientFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   clientToEdit?: SocialMediaClient | null;
+  targetCycleId?: string | null;
   onSaved?: (client: SocialMediaClient) => void;
 }
 
@@ -35,9 +36,10 @@ export const SocialClientFormModal: React.FC<SocialClientFormModalProps> = ({
   isOpen,
   onClose,
   clientToEdit,
+  targetCycleId,
   onSaved,
 }) => {
-  const { clients, addSocialMediaClient, updateSocialMediaClient } = useCrm();
+  const { clients, socialMediaClients, addSocialMediaClient, updateSocialMediaClient } = useCrm();
 
   const isEditing = !!clientToEdit;
 
@@ -113,7 +115,15 @@ export const SocialClientFormModal: React.FC<SocialClientFormModalProps> = ({
       setClientStatus(clientToEdit.clientStatus || 'Active');
 
       setPackageName(clientToEdit.packageName || 'Monthly Social Media Management');
-      setMonthlyPackagePrice(clientToEdit.monthlyPackagePrice || 0);
+      const existingCycles = clientToEdit.cycles || [];
+      const activeCycle =
+        (targetCycleId ? existingCycles.find((cy) => cy.id === targetCycleId) : null) ||
+        existingCycles[0];
+      const initialPrice =
+        activeCycle && activeCycle.packagePrice !== undefined && activeCycle.packagePrice !== null
+          ? Number(activeCycle.packagePrice)
+          : Number(clientToEdit.monthlyPackagePrice) || 0;
+      setMonthlyPackagePrice(initialPrice);
       setBillingCycle(clientToEdit.billingCycle || 'Monthly');
       setPackageStatus(clientToEdit.packageStatus || 'Active');
 
@@ -176,7 +186,7 @@ export const SocialClientFormModal: React.FC<SocialClientFormModalProps> = ({
       setSpecialInstructions('');
     }
     setError(null);
-  }, [clientToEdit, isOpen]);
+  }, [clientToEdit, targetCycleId, isOpen]);
 
   // Handle auto-populating from existing CRM client
   const handleSelectCrmClient = (crmClientId: string) => {
@@ -220,14 +230,17 @@ export const SocialClientFormModal: React.FC<SocialClientFormModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     if (!name.trim()) {
       setError('Please enter the client / business name.');
       return;
     }
 
-    const priceNum = Number(monthlyPackagePrice);
-    if (isNaN(priceNum) || priceNum < 0) {
-      setError('Please enter a valid monthly package price.');
+    const rawPriceStr = String(monthlyPackagePrice).trim();
+    const priceNum = Number(rawPriceStr);
+    if (rawPriceStr === '' || isNaN(priceNum) || !isFinite(priceNum) || priceNum < 0) {
+      setError('Please enter a valid monthly package price (0 or greater).');
       return;
     }
 
@@ -253,7 +266,23 @@ export const SocialClientFormModal: React.FC<SocialClientFormModalProps> = ({
       };
 
       if (isEditing && clientToEdit) {
-        await updateSocialMediaClient(clientToEdit.id, {
+        // Read freshest client record from context so existing payments/deliverables are never lost
+        const latestClient =
+          socialMediaClients.find((c) => c.id === clientToEdit.id) || clientToEdit;
+        const existingCycles = Array.isArray(latestClient.cycles) ? latestClient.cycles : [];
+        const resolvedCycleId =
+          (targetCycleId && existingCycles.some((cy) => cy.id === targetCycleId)
+            ? targetCycleId
+            : existingCycles[0]?.id) || null;
+
+        // Update the active/selected monthly cycle's agreed packagePrice while preserving all payments & work records
+        const updatedCycles = resolvedCycleId
+          ? existingCycles.map((cy) =>
+              cy.id === resolvedCycleId ? { ...cy, packagePrice: priceNum } : cy
+            )
+          : existingCycles;
+
+        const updatePayload: Partial<SocialMediaClient> = {
           crmClientId: selectedCrmClientId || undefined,
           name: name.trim(),
           contactPerson: contactPerson.trim(),
@@ -271,29 +300,15 @@ export const SocialClientFormModal: React.FC<SocialClientFormModalProps> = ({
           billingCycle,
           packageStatus,
           accounts: validAccounts,
+          cycles: updatedCycles,
           notes: notesPayload,
-        });
+        };
+
+        await updateSocialMediaClient(clientToEdit.id, updatePayload);
         if (onSaved) {
           onSaved({
-            ...clientToEdit,
-            crmClientId: selectedCrmClientId || undefined,
-            name: name.trim(),
-            contactPerson: contactPerson.trim(),
-            phone: phone.trim(),
-            whatsapp: whatsapp.trim(),
-            email: email.trim(),
-            businessCategory: finalCategory,
-            address: address.trim(),
-            managementStartDate,
-            packageStartDate,
-            packageRenewalDate,
-            clientStatus,
-            packageName: packageName.trim() || 'Monthly Social Media Management',
-            monthlyPackagePrice: priceNum,
-            billingCycle,
-            packageStatus,
-            accounts: validAccounts,
-            notes: notesPayload,
+            ...latestClient,
+            ...updatePayload,
           });
         }
       } else {
@@ -547,7 +562,7 @@ export const SocialClientFormModal: React.FC<SocialClientFormModalProps> = ({
                 <input
                   type="number"
                   min="0"
-                  step="100"
+                  step="any"
                   required
                   placeholder="8000"
                   value={monthlyPackagePrice}
